@@ -95,6 +95,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Target Offset", meta = (EditCondition = "OffsetType == EOffsetType::EAdaptiveCurve"))
 	FRuntimeFloatCurve HeightOffsetCurve;
 
+	/** Should Target be marked with Widget attached to Socket. */
 	UPROPERTY(EditAnywhere, Category = "Widget")
 	bool bEnableWidget;
 
@@ -102,15 +103,13 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget"))
 	TSoftClassPtr<class UUserWidget> WidgetClass;
 
+	/** Offset applied to Widget. */
 	UPROPERTY(EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget"))
 	FVector WidgetOffset;
 
 	/** Load UUserWidget class async, otherwise sync. */
 	UPROPERTY(AdvancedDisplay, EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget"))
 	bool bAsyncLoadWidget;
-
-	UPROPERTY(AdvancedDisplay, EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget"))
-	FVector2D WidgetPivot;
 
 #if WITH_EDITORONLY_DATA
 protected:
@@ -144,7 +143,7 @@ public:
 	 * e.g. process Team system for not capturing allies.
 	 */
 	UFUNCTION(BlueprintNativeEvent, BlueprintPure, Category = "TargetingHelper")
-	bool CanBeTargeted() const;
+	bool CanBeTargeted(ULockOnTargetComponent* Instigator) const;
 
 	/** Provide Custom Target offset. Offset type should be set to CustomOffset. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "TargetingHelper")

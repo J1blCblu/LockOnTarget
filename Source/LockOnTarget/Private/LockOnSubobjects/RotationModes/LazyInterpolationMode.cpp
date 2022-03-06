@@ -9,9 +9,10 @@
 #endif
 
 ULazyInterpolationMode::ULazyInterpolationMode()
-	: BeginInterpAngle(4.5f)
+	: BeginInterpAngle(4.f)
 	, StopInterpAngle(3.f)
-	, SmoothingAngleRange(5.f)
+	, SmoothingAngleRange(7.f)
+	, InterpSpeedRatioClamp(0.05f, 1.f)
 	, bLazyInterpolationInProgress(false)
 {
 }
@@ -21,8 +22,7 @@ FRotator ULazyInterpolationMode::GetRotation_Implementation(const FRotator& Curr
 	checkf(BeginInterpAngle > StopInterpAngle, TEXT("LazyInterpolationMode in %s has invalid BeginInterpAngle or StopInterpAngle. Update it properly."), *GetNameSafe(GetLockOn()->GetOwner()));
 
 	float InterpSpeed = InterpolationSpeed;
-	FRotator NewRotation = FRotationMatrix::MakeFromX(TargetLocation - InstigatorLocation).Rotator();
-	ClampPitch(NewRotation);
+	FRotator NewRotation = GetClampedRotationToTarget(InstigatorLocation, TargetLocation);
 
 #if WITH_EDITORONLY_DATA
 	DrawDebugInfo();
@@ -32,10 +32,10 @@ FRotator ULazyInterpolationMode::GetRotation_Implementation(const FRotator& Curr
 	{
 		return CurrentRotation;
 	}
-	GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Black, FString::Printf(TEXT("Tick")));
+
 	NewRotation = FMath::RInterpTo(CurrentRotation, NewRotation, DeltaTime, InterpSpeed);
 
-	UpdateRotationAxes(CurrentRotation, NewRotation);
+	ApplyRotationAxes(CurrentRotation, NewRotation);
 
 	return NewRotation;
 }
@@ -62,7 +62,7 @@ bool ULazyInterpolationMode::CanLazyInterpolate_Implementation(const FRotator& N
 	if (bLazyInterpolationInProgress)
 	{
 		//Interp speed ratio clamping
-		InterpSpeed *= FMath::Clamp((Angle - StopInterpAngle) / SmoothingAngleRange, 0.05f, 1.f);
+		InterpSpeed *= FMath::Clamp((Angle - StopInterpAngle) / SmoothingAngleRange, InterpSpeedRatioClamp.X, InterpSpeedRatioClamp.Y);
 	}
 
 	return bLazyInterpolationInProgress;
@@ -76,7 +76,7 @@ void ULazyInterpolationMode::DrawDebugInfo() const
 	{
 		const FVector FocusPointLocation = GetLockOn()->GetCapturedLocation(true);
 		const FVector LineOrigin = GetLockOn()->GetCameraLocation();
-		const FVector ForwardVector = GetLockOn()->GetCameraForwardVector();
+		const FVector ForwardVector = (GetLockOn()->GetCameraRotation().Quaternion() * OffsetRotation.GetInverse().Quaternion()).Rotator().Vector();
 		const FVector LazyFocusPoint = LineOrigin + (ForwardVector * ((FocusPointLocation - LineOrigin) | ForwardVector));
 
 		DrawDebugSphere(GetWorld(), LazyFocusPoint, 8.f, 15, FColor::Yellow, false, 0.f, 7, 2.f);
@@ -84,12 +84,14 @@ void ULazyInterpolationMode::DrawDebugInfo() const
 
 		float OuterRadius = (FocusPointLocation - LineOrigin).Size() * FMath::Tan(BeginInterpAngle * (PI / 180.f));
 		float InnerRadius = (FocusPointLocation - LineOrigin).Size() * FMath::Tan(StopInterpAngle * (PI / 180.f));
+		float SmoothRadius = (FocusPointLocation - LineOrigin).Size() * FMath::Tan((StopInterpAngle + SmoothingAngleRange) * (PI / 180.f));
 
 		const FVector RightVector = GetLockOn()->GetCameraRightVector();
 		const FVector UpVector = GetLockOn()->GetCameraUpVector();
 
 		DrawDebugCircle(GetWorld(), FocusPointLocation, OuterRadius, 24, FColor::Yellow, false, 0.f, 4, 3.f, RightVector, UpVector, true);
 		DrawDebugCircle(GetWorld(), FocusPointLocation, InnerRadius, 24, FColor::Red, false, 0.f, 3, 3.f, RightVector, UpVector, false);
+		DrawDebugCircle(GetWorld(), FocusPointLocation, SmoothRadius, 24, FColor::Blue, false, 0.f, 3, 3.f, RightVector, UpVector, false);
 	}
 }
 

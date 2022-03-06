@@ -8,7 +8,7 @@
 /**
  * Experimental Lazy Interpolation Mode.
  */
-UCLASS(ClassGroup = (LockOnTarget), Within = LockOnTargetComponent, HideDropdown)
+UCLASS(ClassGroup = (LockOnTarget), HideDropdown)
 class LOCKONTARGET_API ULazyInterpolationModeRotator : public UInterpolationMode
 {
 	GENERATED_BODY()

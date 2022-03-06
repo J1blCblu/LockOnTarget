@@ -9,7 +9,7 @@
  * Interpolation Rotation Mode.
  * Will return interpolated rotation.
  */
-UCLASS(Blueprintable, ClassGroup = (LockOnTarget), Within = LockOnTargetComponent)
+UCLASS(Blueprintable, ClassGroup = (LockOnTarget))
 class LOCKONTARGET_API UInterpolationMode : public URotationModeBase
 {
 	GENERATED_BODY()
@@ -17,7 +17,7 @@ class LOCKONTARGET_API UInterpolationMode : public URotationModeBase
 public:
 	UInterpolationMode();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config", meta = (UIMin = 0.f, ClampMin = 0.f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interpolation", meta = (UIMin = 0.f, ClampMin = 0.f))
 	float InterpolationSpeed;
 
 	virtual FRotator GetRotation_Implementation(const FRotator& CurrentRotation, const FVector& InstigatorLocation, const FVector& TargetLocation, float DeltaTime) override;

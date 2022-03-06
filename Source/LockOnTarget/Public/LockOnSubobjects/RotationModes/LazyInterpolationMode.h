@@ -6,14 +6,14 @@
 #include "LazyInterpolationMode.generated.h"
 
 /**
- * Lazy Interpolation Mode.
+ * Lazy Interpolation Mode. Intended only for ControlRotation.
  * The main advantage is that the camera doesn't shake in free zone when the captured socket is moving along a sinusoid.
  * 
  * Interpolates only if Angle between Target and current rotation is more then BeginInterpAngle.
  * Stop Interpolation when Angle reaches StopInterpAngle.
  * Interpolation Speed "interpolates" in SmoothingAngleRange between SmoothRangeRatioClamp values.
  */
-UCLASS(Blueprintable, ClassGroup = (LockOnTarget), Within = LockOnTargetComponent)
+UCLASS(Blueprintable, ClassGroup = (LockOnTarget))
 class LOCKONTARGET_API ULazyInterpolationMode : public UInterpolationMode
 {
 	GENERATED_BODY()
@@ -25,14 +25,14 @@ public:
 	 * Angle beyond which interpolation starts.
 	 * Should be > StopInterpAngle.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lazy Interpolation", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f))
 	float BeginInterpAngle;
 
 	/**
 	 * Angle reaching which interpolation stops.
 	 * Should be < BeginInterpAngle.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lazy Interpolation", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f))
 	float StopInterpAngle;
 
 	/**
@@ -40,13 +40,15 @@ public:
 	 * If Angle between Forward vector(camera/owner) and Vector to Target = 5.f then Ratio will be (5.f - 3.f) / 4.f = 0.5f.
 	 * This ratio will be clamped by SmoothingRangeInterpSpeedSlamping and then multiplied by InterpSpeed.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Config", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lazy Interpolation", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f))
 	float SmoothingAngleRange;
+
+	FVector2D InterpSpeedRatioClamp;
 
 #if WITH_EDITORONLY_DATA
 
 	/** Intended only for Control rotation. Not work correctly if Rotation actually clamped by PitchClamp. */
-	UPROPERTY(EditAnywhere, Category = "Config")
+	UPROPERTY(EditAnywhere, Category = "Lazy Interpolation")
 	bool bVisualizeOnControlRotation = false;
 #endif
 

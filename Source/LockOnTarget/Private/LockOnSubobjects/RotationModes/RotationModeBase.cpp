@@ -6,25 +6,47 @@
 URotationModeBase::URotationModeBase()
 	: RotationAxes(0xff)
 	, PitchClamp(-60.f, 60.f)
+	, OffsetRotation(0.f)
 {
 
 }
 
 FRotator URotationModeBase::GetRotation_Implementation(const FRotator& CurrentRotation, const FVector& InstigatorLocation, const FVector& TargetLocation, float DeltaTime)
 {
-	FRotator NewRotation = FRotationMatrix::MakeFromX(TargetLocation - InstigatorLocation).Rotator();
-	UpdateRotationAxes(CurrentRotation, NewRotation);
-	ClampPitch(NewRotation);
+	FRotator NewRotation = GetClampedRotationToTarget(InstigatorLocation, TargetLocation);
+	ApplyRotationAxes(CurrentRotation, NewRotation);
 
 	return NewRotation;
 }
 
-void URotationModeBase::UpdateRotationAxes(const FRotator& CurrentRotation, FRotator& NewRotation) const
+FRotator URotationModeBase::GetRotationToTarget(const FVector& LocationFrom, const FVector& LocationTo) const
+{
+	FRotator RotationToTarget = FRotationMatrix::MakeFromX(LocationTo - LocationFrom).Rotator();
+	AddOffsetToRotation(RotationToTarget);
+
+	return RotationToTarget;
+}
+
+FRotator URotationModeBase::GetClampedRotationToTarget(const FVector& LocationFrom, const FVector& LocationTo) const
+{
+	FRotator ClampedRotator = GetRotationToTarget(LocationFrom, LocationTo);
+	ClampPitch(ClampedRotator);
+	
+	return ClampedRotator;
+}
+
+void URotationModeBase::ApplyRotationAxes(const FRotator& CurrentRotation, FRotator& NewRotation) const
 {
 	NewRotation = {
 		RotationAxes & ERot::E_Pitch ? NewRotation.Pitch : CurrentRotation.Pitch,
 		RotationAxes & ERot::E_Yaw ? NewRotation.Yaw : CurrentRotation.Yaw,
-		RotationAxes & ERot::E_Roll ? NewRotation.Roll : CurrentRotation.Roll};
+		RotationAxes & ERot::E_Roll ? NewRotation.Roll : CurrentRotation.Roll
+	};
+}
+
+void URotationModeBase::AddOffsetToRotation(FRotator& Rotator) const
+{
+	Rotator = (Rotator.Quaternion() * OffsetRotation.Quaternion()).Rotator();
 }
 
 void URotationModeBase::ClampPitch(FRotator& Rotation) const
@@ -59,7 +81,7 @@ void URotationModeBase::PostEditChangeProperty(struct FPropertyChangedEvent& Eve
 		{
 			if (PitchClamp.X > PitchClamp.Y)
 			{
-				PitchClamp.Y = PitchClamp.X;
+				PitchClamp.X = PitchClamp.Y;
 			}
 		}
 
@@ -67,7 +89,7 @@ void URotationModeBase::PostEditChangeProperty(struct FPropertyChangedEvent& Eve
 		{
 			if (PitchClamp.Y < PitchClamp.X)
 			{
-				PitchClamp.X = PitchClamp.Y;
+				PitchClamp.Y = PitchClamp.X;
 			}
 		}
 	}

@@ -20,13 +20,13 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTargetUnlocked, AActor*, Unlocked
  *	+ Target storage(Helper Component and Socket).
  *	+ Processing input.
  *	+ Delegating other work to it subobjects(which can be changed via BP/C++):
- *	+	- TargetHandler used for handle Target(find, switch, maintenance).
- *	+	- Tick features, like rotation mode which return final rotation for Control/Owner Rotation.
+ *	+	- TargetHandler - used for handle Target(find, switch, maintenance).
+ *	+	- RotationModes - return final rotation for Control/Owner Rotation.
  * 
  * Main advantages:
  *	- Targeting to any AActor subclass. Also you can add and remove Helper component from any Actor at runtime.
  *	  (Not only one class and its subclasses, any Actor can be targeted, like a stone on the ground or huge Dragon with multiply capture points).
- *  - Target can have multiple sockets, which can be added/removed at runtime.
+ *  - Target can have multiple sockets, which can e added/removed at runtime.
  *  - Custom rules for Target finding, switching, maintenance.
  *  - Custom owner/control rotation rules.
  *  - Flexible processing input settings.

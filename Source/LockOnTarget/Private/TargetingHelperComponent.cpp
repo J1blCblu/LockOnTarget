@@ -8,14 +8,13 @@
 UTargetingHelperComponent::UTargetingHelperComponent()
 	: bCanBeTargeted(true)
 	, MeshName(NAME_None)
-	, CaptureRadius(2000.f)
-	, LostRadius(2100.f)
+	, CaptureRadius(1700.f)
+	, LostRadius(1800.f)
 	, MinDistance(100.f)
 	, TargetOffset(0.f)
 	, bEnableWidget(true)
 	, WidgetOffset(0.f)
 	, bAsyncLoadWidget(true)
-	, WidgetPivot(0.5f, 0.5f)
 {
 	PrimaryComponentTick.bCanEverTick = false;
 	Sockets.Push(NAME_None);
@@ -34,7 +33,6 @@ UTargetingHelperComponent::UTargetingHelperComponent()
 		WidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
 		WidgetComponent->SetVisibility(false);
 		WidgetComponent->SetDrawAtDesiredSize(true);
-		WidgetComponent->SetPivot(WidgetPivot);
 		WidgetComponent->AddRelativeLocation(WidgetOffset);
 	}
 }
@@ -201,7 +199,7 @@ void UTargetingHelperComponent::AsyncLoadWidget(TSoftClassPtr<UUserWidget> Widge
 /*******************************  Other Methods  *******************************************/
 /*******************************************************************************************/
 
-bool UTargetingHelperComponent::CanBeTargeted_Implementation() const
+bool UTargetingHelperComponent::CanBeTargeted_Implementation(ULockOnTargetComponent* Instigator) const
 {
 	return bCanBeTargeted && (Sockets.Num() > 0);
 }

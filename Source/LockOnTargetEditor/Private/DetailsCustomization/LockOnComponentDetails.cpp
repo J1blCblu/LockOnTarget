@@ -18,14 +18,8 @@ void FLockOnComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayou
 	//TSharedPtr<IPropertyHandle> Property = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(ULockOnTargetComponent, Sockets));
 	//check(Property.IsValid());
 
-	const FText LockOnDescription = LOCTEXT("LockOnDescriptionText", R"(LockOnComponent responsible for:
-+ Target storage(Helper Component and Socket).
-+ Processing input.
-+ Delegating work to it subobjects(which can be changed via BP/C++):
-+	- TargetHandler used for handle Target(find, switch, maintenance).
-+	- Rotation mode return final rotation for Control Rotation/Owner Rotation.
-
-Target should have Targeting Helper Component.
+	const FText LockOnDescription = LOCTEXT("LockOnDescriptionText", 
+R"(Target should have Targeting Helper Component.
 
 Also note that you may need control yourself next fields:
 + bOrientRotationToMovement in UCharacterMovementComponent.

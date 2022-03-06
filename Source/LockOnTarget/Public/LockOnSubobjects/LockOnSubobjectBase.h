@@ -12,7 +12,7 @@ class ULockOnTargetComponent;
 /**
  * Base LockOnTargetComponent subobject class.
  */
-UCLASS(Abstract, Within = LockOnTargetComponent)
+UCLASS(Abstract)
 class LOCKONTARGET_API ULockOnSubobjectBase : public UObject
 {
 	GENERATED_BODY()

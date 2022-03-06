@@ -234,7 +234,7 @@ void ULockOnTargetComponent::SetLockOnTarget(AActor* NewTarget, const FName& Soc
 	{
 		UTargetingHelperComponent* NewTargetHelperComponent = NewTarget->FindComponentByClass<UTargetingHelperComponent>();
 
-		if (IsValid(NewTargetHelperComponent) && NewTargetHelperComponent->CanBeTargeted())
+		if (IsValid(NewTargetHelperComponent) && NewTargetHelperComponent->CanBeTargeted(this))
 		{
 			SetLockOnTargetNative({NewTargetHelperComponent, Socket});
 		}

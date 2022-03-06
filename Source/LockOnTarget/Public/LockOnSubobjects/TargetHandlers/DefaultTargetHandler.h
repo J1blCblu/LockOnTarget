@@ -17,7 +17,7 @@ class UTargetingHelperComponent;
  * You can override CalculateTargetModifier() for custom sorting set of Targets.
  * @see UTargetHandlerBase.
  */
-UCLASS(Blueprintable, ClassGroup = (LockOnTarget), Within = LockOnTargetComponent)
+UCLASS(Blueprintable, ClassGroup = (LockOnTarget))
 class LOCKONTARGET_API UDefaultTargetHandler : public UTargetHandlerBase
 {
 	GENERATED_BODY()
@@ -65,7 +65,7 @@ public:
 	 * Default Solver that calculate Target modifier. (Target with less modifier will be captured as the result).
 	 * With CalculateTargetModifier override without calling parent Method will have no Affect.
 	 * 
-	 * Angle weight determines the effect of angle between Actor/Socket and screen center(basically, without camera rotation clamping) modifier while finding best Target.
+	 * Angle weight determines the effect of angle between captured Target's socket and screen center(basically, without camera rotation clamping) modifier while finding best Target.
 	 * i.e. smaller value will reduce Angle affect on the resulted modifier and increase Distance weight to Target.
 	 * 
 	 * For finding closest Target this value should be 0.f. 
@@ -97,7 +97,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f))
 	float TrigonometricInputWeight;
 
-	/** Maybe useful for Capturing Target not closest to screen center. */
+	/** Maybe useful for Capturing Target not closest to screen center. Measured in degrees. */
 	UPROPERTY(EditAnywhere, Category = "Default Solver|Advanced")
 	FVector2D ScreenCenterOffsetWhileFinding = FVector2D(0.f, 0.f);
 
@@ -116,7 +116,7 @@ public:
 	float TrigonometricAngleRange;
 
 	/**
-	 * Target should be Traced before capturing it.
+	 * Does Target should be Traced before capturing it.
 	 * While Target locked checks successful trace to it.
 	 * If Target while Targeting out of Line Of Sight the timer begins work.
 	 * Target may return to Line Of Sight and stop timer.
@@ -125,7 +125,7 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Line Of Sight")
 	bool bLineOfSightCheck;
 
-	/** Object channel for tracing. If trace hit something then Line of Sight fails. Target and Owner will be ignored.*/
+	/** Object channel for tracing. If trace hit something then Line of Sight fails. Target and Owner will be ignored. */
 	UPROPERTY(EditDefaultsOnly, Category = "Line Of Sight", meta = (EditCondition = "bLineOfSightCheck"))
 	TArray<TEnumAsByte<ECollisionChannel>> TraceObjectChannels;
 

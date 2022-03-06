@@ -18,8 +18,8 @@ UDefaultTargetHandler::UDefaultTargetHandler()
 	, CaptureAngle(35.f)
 	, bCalculateDistance(true)
 	, AngleWeightWhileFinding(0.85f)
-	, AngleWeightWhileSwitching(0.75f)
-	, TrigonometricInputWeight(0.25f)
+	, AngleWeightWhileSwitching(0.85f)
+	, TrigonometricInputWeight(0.3f)
 	, TrigonometricAngleRange(60.f)
 	, bLineOfSightCheck(true)
 	, LostTargetDelay(1.5f)
@@ -56,7 +56,7 @@ bool UDefaultTargetHandler::CanContinueTargeting_Implementation()
 	}
 
 	//Check helper component state.
-	if (!GetLockOn()->GetHelperComponent()->CanBeTargeted())
+	if (!GetLockOn()->GetHelperComponent()->CanBeTargeted(GetLockOn()))
 	{
 		return HandleTargetClearing(EUnlockReasonBitmask::E_HelperComponentDiscard);
 	}
@@ -138,7 +138,7 @@ bool UDefaultTargetHandler::IsTargetable(UTargetingHelperComponent* HelpComp) co
 #endif
 
 	/** Check HelperComponent condition. */
-	if(!HelpComp->CanBeTargeted())
+	if(!HelpComp->CanBeTargeted(GetLockOn()))
 	{
 		return false;
 	}
