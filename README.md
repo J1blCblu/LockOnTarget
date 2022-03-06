@@ -3,15 +3,15 @@ Fast and Efficient plugin for Unreal Engine which gives the ability to capture t
 System consist of 2 components which can be extendent and customized in different ways via C++/BP.
 
 ### **LockOnTargetComponent**
-[**Main component**](https://github.com/J1blCblu/LockOnTarget/wiki/3.-LockOnTarget-Configuration) which capture `Targeting Helper Component` and wraps the following systems:
+**Main component** which capture `Targeting Helper Component` and wraps the following systems:
   * Target storage (Helper Component and Socket).
   * Processing input.
   * Delegating other work to it subobjects:
-    * [**TargetHandler**](https://github.com/J1blCblu/LockOnTarget/wiki/3.1-DefaultTargetHandler-Configuration) - used for handle Target(find, switch, maintenance).
-    * [**RotationModes**](https://github.com/J1blCblu/LockOnTarget/wiki/3.2-Rotation-Modes) - return final rotation for Control/Owner Rotation.
+    * **TargetHandler** - used for handle Target(find, switch, maintenance).
+    * **RotationModes** - return final rotation for Control/Owner Rotation.
 
 ### **TargetingHelperComponent**
-[Captured](https://github.com/J1blCblu/LockOnTarget/wiki/4.-TargetingHelper-Configuration) by `LockOnTarget component`. Target specific storage and useful methods, delegates for it owner.
+Captured by `LockOnTarget component`. Target specific storage and useful methods, delegates for it owner.
 
 # Features
 
