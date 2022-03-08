@@ -18,6 +18,7 @@ Captured by `LockOnTarget component`. Target specific storage and useful methods
  * Targeting to `any AActor subclass`. Adding and removing Helper component from any Actor at runtime.
  * Target can have `multiple sockets`, which can be added/removed at runtime.
  * Line of Sight handling.
+ * Switch Targets in any direction (in screen space).
  * Flexible processing input settings.
  * Multiple settings for capturing Target.
  * Custom rules for Target finding, switching, maintenance.
