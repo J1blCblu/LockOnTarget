@@ -7,7 +7,8 @@
 #include "TargetingHelperComponent.h"
 
 ULockOnTargetComponent::ULockOnTargetComponent()
-	: bDisableTickWhileUnlocked(true)
+	: bCanCaptureTarget(true)
+	, bDisableTickWhileUnlocked(true)
 	, InputBufferThreshold(.1f)
 	, BufferResetFrequency(0.15f)
 	, ClampInputVector(-2.f, 2.f)
@@ -51,12 +52,22 @@ void ULockOnTargetComponent::EndPlay(const EEndPlayReason::Type Reason)
 
 void ULockOnTargetComponent::EnableTargeting()
 {
-	IsTargetLocked() ? ClearTarget() : FindTarget();
+	if (IsTargetLocked())
+	{
+		ClearTarget();
+	}
+	else
+	{
+		if (bCanCaptureTarget)
+		{
+			FindTarget();
+		}
+	}
 }
 
 void ULockOnTargetComponent::SwitchTargetYaw(float YawAxis)
 {
-	if (IsTargetLocked() && (GetWorld() && !GetWorld()->GetTimerManager().IsTimerActive(SwitchDelayHandler)))
+	if (bCanCaptureTarget && IsTargetLocked() && (GetWorld() && !GetWorld()->GetTimerManager().IsTimerActive(SwitchDelayHandler)))
 	{
 		InputVector.X = YawAxis;
 	}
@@ -64,7 +75,7 @@ void ULockOnTargetComponent::SwitchTargetYaw(float YawAxis)
 
 void ULockOnTargetComponent::SwitchTargetPitch(float PitchAxis)
 {
-	if (IsTargetLocked() && (GetWorld() && !GetWorld()->GetTimerManager().IsTimerActive(SwitchDelayHandler)))
+	if (bCanCaptureTarget && IsTargetLocked() && (GetWorld() && !GetWorld()->GetTimerManager().IsTimerActive(SwitchDelayHandler)))
 	{
 		InputVector.Y = PitchAxis;
 	}
@@ -216,7 +227,7 @@ bool ULockOnTargetComponent::SwitchTarget(float PlayerInput)
 
 bool ULockOnTargetComponent::SwitchTargetManual(float TrigonometricInput)
 {
-	return IsTargetLocked() && SwitchTarget(TrigonometricInput);
+	return bCanCaptureTarget && IsTargetLocked() && SwitchTarget(TrigonometricInput);
 }
 
 /*******************************************************************************************/
@@ -225,6 +236,11 @@ bool ULockOnTargetComponent::SwitchTargetManual(float TrigonometricInput)
 
 void ULockOnTargetComponent::SetLockOnTarget(AActor* NewTarget, const FName& Socket)
 {
+	if (!bCanCaptureTarget)
+	{
+		return;
+	}
+
 	if (IsTargetLocked())
 	{
 		ClearTarget();

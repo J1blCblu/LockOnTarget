@@ -11,7 +11,7 @@
 #endif
 
 UDefaultTargetHandler::UDefaultTargetHandler()
-	: AutoFindTargetFlags(0xff)
+	: AutoFindTargetFlags(0b1111)
 	, bScreenCapture(true)
 	, FindingScreenOffset(15.f, 10.f)
 	, SwitchingScreenOffset(5.f, 0.f)

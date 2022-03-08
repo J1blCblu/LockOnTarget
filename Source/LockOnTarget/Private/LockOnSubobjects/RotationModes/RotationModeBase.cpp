@@ -4,7 +4,7 @@
 #include "LockOnSubobjects/RotationModes/RotationModeBase.h"
 
 URotationModeBase::URotationModeBase()
-	: RotationAxes(0xff)
+	: RotationAxes(0b111)
 	, PitchClamp(-60.f, 60.f)
 	, OffsetRotation(0.f)
 {
@@ -46,7 +46,10 @@ void URotationModeBase::ApplyRotationAxes(const FRotator& CurrentRotation, FRota
 
 void URotationModeBase::AddOffsetToRotation(FRotator& Rotator) const
 {
-	Rotator = (Rotator.Quaternion() * OffsetRotation.Quaternion()).Rotator();
+	if (!OffsetRotation.IsNearlyZero())
+	{
+		Rotator = (Rotator.Quaternion() * OffsetRotation.Quaternion()).Rotator();
+	}
 }
 
 void URotationModeBase::ClampPitch(FRotator& Rotation) const

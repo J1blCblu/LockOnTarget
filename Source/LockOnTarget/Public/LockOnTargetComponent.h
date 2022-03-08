@@ -27,6 +27,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTargetUnlocked, AActor*, Unlocked
  *	- Targeting to any AActor subclass. Also you can add and remove Helper component from any Actor at runtime.
  *	  (Not only one class and its subclasses, any Actor can be targeted, like a stone on the ground or huge Dragon with multiply capture points).
  *  - Target can have multiple sockets, which can e added/removed at runtime.
+ *  - Switch Targets in any direction (in screen space).
  *  - Custom rules for Target finding, switching, maintenance.
  *  - Custom owner/control rotation rules.
  *  - Flexible processing input settings.
@@ -50,6 +51,9 @@ protected:
 	//~UActorComponent
 
 public:
+	/** Can this Component capture Targets. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings")
+	bool bCanCaptureTarget;
 
 	/** Implementation of Handling Target(find, switch, maintenance). */
 	UPROPERTY(BlueprintReadOnly, EditAnywhere, Instanced, Category = "Default Settings")
@@ -203,7 +207,7 @@ public:
 
 	/** @return - Current Locked On Target's HelperComponent. */
 	UFUNCTION(BlueprintPure, Category = "Lock On Target Component")
-	UTargetingHelperComponent* GetHelperComponent() const { return PrivateTargetInfo.HelperComponent;}
+	UTargetingHelperComponent* GetHelperComponent() const { return PrivateTargetInfo.HelperComponent; }
 
 	/** @return - Targeting duration in sec. */
 	UFUNCTION(BlueprintPure, Category = "Lock On Target Component")
