@@ -22,10 +22,10 @@ public:
 
 public:
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(BlueprintReadWrite, Category = LOT_TargetInfo)
 	UTargetingHelperComponent* HelperComponent = nullptr;
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(BlueprintReadWrite, Category = LOT_TargetInfo)
 	FName SocketForCapturing = NAME_None;
 
 public:

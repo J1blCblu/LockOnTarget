@@ -5,6 +5,11 @@
 #include "LockOnTargetComponent.h"
 #include "Utilities/Structs.h"
 #include "Utilities/LOTC_BPLibrary.h"
+#include "UObject/UObjectIterator.h"
+#include "TimerManager.h"
+#include "GameFramework/PlayerController.h"
+#include "Engine/World.h"
+#include "CollisionQueryParams.h"
 
 #if WITH_EDITORONLY_DATA
 #include "DrawDebugHelpers.h"

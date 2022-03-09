@@ -3,6 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/EngineTypes.h"
+#include "UObject/Object.h"
+#include "Engine/EngineBaseTypes.h"
 #include "Utilities/Structs.h"
 #include "UObject/NoExportTypes.h"
 #include "LockOnSubobjectBase.generated.h"
@@ -20,7 +23,7 @@ class LOCKONTARGET_API ULockOnSubobjectBase : public UObject
 public:
 	ULockOnSubobjectBase();
 
-	UFUNCTION(BlueprintPure, meta = (BlueprintProtected))
+	UFUNCTION(BlueprintPure, Category = LockOnTarget, meta = (BlueprintProtected))
 	ULockOnTargetComponent* GetLockOn() const;
 
 	virtual UWorld* GetWorld() const override;

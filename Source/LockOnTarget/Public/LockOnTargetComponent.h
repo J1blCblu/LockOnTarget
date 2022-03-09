@@ -8,6 +8,9 @@
 #include "LockOnTargetComponent.generated.h"
 
 class UTargetingHelperComponent;
+class AController;
+class APlayerController;
+class AActor;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTargetLocked, AActor*, LockedActor);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnTargetNotFound);

@@ -2,6 +2,7 @@
 
 #include "TargetingHelperComponent.h"
 #include "Components/WidgetComponent.h"
+#include "Components/MeshComponent.h"
 #include "Engine/StreamableManager.h"
 #include "LockOnTargetComponent.h"
 
@@ -301,6 +302,21 @@ void UTargetingHelperComponent::InitMeshComponent() const
 	{
 		OwnerMeshComponent = FindMeshComponentByName<UMeshComponent>(GetOwner(), MeshName);
 	}
+}
+
+USceneComponent* UTargetingHelperComponent::GetMeshComponent() const
+{
+	return OwnerMeshComponent.IsValid() ? OwnerMeshComponent.Get() : GetFirstMeshComponent();
+}
+
+USceneComponent* UTargetingHelperComponent::GetFirstMeshComponent() const
+{
+	return GetOwner() ? GetOwner()->FindComponentByClass<UMeshComponent>() : nullptr;
+}
+
+USceneComponent* UTargetingHelperComponent::GetRootComponent() const
+{
+	return GetOwner() ? GetOwner()->GetRootComponent() : nullptr;
 }
 
 void UTargetingHelperComponent::VerifySockets()

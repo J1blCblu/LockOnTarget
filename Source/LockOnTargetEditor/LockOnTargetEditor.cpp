@@ -8,7 +8,8 @@
 #include "DetailsCustomization/LockOnComponentDetails.h"
 #include "TargetingHelperComponent.h"
 #include "LockOnTargetComponent.h"
-#include "UnrealEd.h"
+#include "Editor/UnrealEdEngine.h"
+#include "UnrealEdGlobals.h"
 #include "ComponentVisualizer/HelperVisualizer.h"
 
 DEFINE_LOG_CATEGORY(Log_LOC_Editor);

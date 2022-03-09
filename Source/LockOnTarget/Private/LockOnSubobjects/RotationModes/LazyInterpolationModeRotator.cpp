@@ -2,6 +2,7 @@
 
 #include "LockOnSubobjects/RotationModes/LazyInterpolationModeRotator.h"
 #include "LockOnTargetComponent.h"
+#include "GameFramework/Actor.h"
 
 #if WITH_EDITORONLY_DATA
 #include "DrawDebugHelpers.h"

@@ -5,6 +5,7 @@
 #include "LockOnSubobjects/RotationModes/RotationModeBase.h"
 #include "LockOnSubobjects/TargetHandlers/TargetHandlerBase.h"
 #include "TargetingHelperComponent.h"
+#include "TimerManager.h"
 
 ULockOnTargetComponent::ULockOnTargetComponent()
 	: bCanCaptureTarget(true)

@@ -5,10 +5,14 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Utilities/Enums.h"
+#include "Curves/CurveFloat.h"
 #include "TargetingHelperComponent.generated.h"
 
 class ULockOnTargetComponent;
 class FHelperVisualizer;
+class UMeshComponent;
+class USceneComponent;
+class AActor;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnOwnerCaptured, ULockOnTargetComponent*, Invader);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnOwnerReleased, ULockOnTargetComponent*, OldInvader);
@@ -228,9 +232,9 @@ private:
 	/** Cached mesh component for socket location and widget attachment. */
 private:
 	mutable TWeakObjectPtr<UMeshComponent> OwnerMeshComponent;
-	USceneComponent* GetMeshComponent() const { return OwnerMeshComponent.IsValid() ? OwnerMeshComponent.Get() : GetFirstMeshComponent(); }
-	USceneComponent* GetFirstMeshComponent() const { return GetOwner() ? GetOwner()->FindComponentByClass<UMeshComponent>() : nullptr; }
-	USceneComponent* GetRootComponent() const { return GetOwner() ? GetOwner()->GetRootComponent() : nullptr; }
+	USceneComponent* GetMeshComponent() const;
+	USceneComponent* GetFirstMeshComponent() const;
+	USceneComponent* GetRootComponent() const;
 	/** ~Cached mesh component for socket location and widget attachment. */
 
 private:

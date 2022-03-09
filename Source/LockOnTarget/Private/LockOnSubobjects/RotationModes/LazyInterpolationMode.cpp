@@ -3,6 +3,7 @@
 #include "LockOnSubobjects/RotationModes/LazyInterpolationMode.h"
 #include "LockOnTargetComponent.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "GameFramework/Actor.h"
 
 #if WITH_EDITORONLY_DATA
 #include "DrawDebugHelpers.h"
