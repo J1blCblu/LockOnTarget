@@ -13,7 +13,7 @@ ULazyInterpolationMode::ULazyInterpolationMode()
 	: BeginInterpAngle(4.f)
 	, StopInterpAngle(3.f)
 	, SmoothingAngleRange(7.f)
-	, InterpSpeedRatioClamp(0.05f, 1.f)
+	, MinInterpSpeedRatio(0.1f)
 	, bLazyInterpolationInProgress(false)
 {
 }
@@ -63,7 +63,7 @@ bool ULazyInterpolationMode::CanLazyInterpolate_Implementation(const FRotator& N
 	if (bLazyInterpolationInProgress)
 	{
 		//Interp speed ratio clamping
-		InterpSpeed *= FMath::Clamp((Angle - StopInterpAngle) / SmoothingAngleRange, InterpSpeedRatioClamp.X, InterpSpeedRatioClamp.Y);
+		InterpSpeed *= FMath::Clamp((Angle - StopInterpAngle) / SmoothingAngleRange, MinInterpSpeedRatio, 1.f);
 	}
 
 	return bLazyInterpolationInProgress;

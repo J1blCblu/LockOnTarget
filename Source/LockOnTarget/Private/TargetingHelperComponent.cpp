@@ -70,22 +70,23 @@ void UTargetingHelperComponent::CaptureTarget(ULockOnTargetComponent* Instigator
 {
 	if (IsValid(Instigator))
 	{
-		Invaders.Push(Instigator);
-		OnOwnerCaptured.Broadcast(Instigator);
-		UpdateWidget(Socket);
+		bool bIsAlreadyBeen = false;
+		Invaders.Add(Instigator, &bIsAlreadyBeen);
+		
+		if(!bIsAlreadyBeen)
+		{
+			OnOwnerCaptured.Broadcast(Instigator);
+			UpdateWidget(Socket);
+		}
 	}
 }
 
 void UTargetingHelperComponent::ReleaseTarget(ULockOnTargetComponent* Instigator)
 {
-	if (IsTargeted())
+	if (IsTargeted() && IsValid(Instigator) && Invaders.Remove(Instigator))
 	{
-		if (Invaders.Contains(Instigator))
-		{
-			Invaders.RemoveSingleSwap(Instigator);
-			OnOwnerReleased.Broadcast(Instigator);
-			HideWidget();
-		}
+		OnOwnerReleased.Broadcast(Instigator);
+		HideWidget();
 	}
 }
 
@@ -301,6 +302,14 @@ void UTargetingHelperComponent::InitMeshComponent() const
 	if (!OwnerMeshComponent.IsValid())
 	{
 		OwnerMeshComponent = FindMeshComponentByName<UMeshComponent>(GetOwner(), MeshName);
+	}
+}
+
+void UTargetingHelperComponent::UpdateMeshComponent(UMeshComponent* NewComponent)
+{
+	if (IsValid(NewComponent) && NewComponent != OwnerMeshComponent.Get())
+	{
+		OwnerMeshComponent = NewComponent;
 	}
 }
 

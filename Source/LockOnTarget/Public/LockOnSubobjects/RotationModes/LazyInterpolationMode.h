@@ -38,12 +38,17 @@ public:
 	/**
 	 * Range starts after StopInterpAngle. e.g. if StopInterpAngle = 3.f and SmoothingAngleRange = 4.f then range will be [3.f, 7.f].
 	 * If Angle between Forward vector(camera/owner) and Vector to Target = 5.f then Ratio will be (5.f - 3.f) / 4.f = 0.5f.
-	 * This ratio will be clamped by SmoothingRangeInterpSpeedSlamping and then multiplied by InterpSpeed.
+	 * This ratio will be clamped by [MinInterpSpeedRatio, 1.f] and then multiplied by InterpSpeed.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lazy Interpolation", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f))
 	float SmoothingAngleRange;
-
-	FVector2D InterpSpeedRatioClamp;
+	
+	/** 
+	 * Minimum interpolation speed ratio. Ratio will be [MinInterpSpeedRatio, 1.f].
+	 * The closer the value is to 1.f, the sharper the interpolation will be in SmoothingAngleRange.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lazy Interpolation", meta = (ClampMin = 0.05f, ClampMax = 1.f, UIMin = 0.05f, UIMax = 1.f))
+	float MinInterpSpeedRatio;
 
 #if WITH_EDITORONLY_DATA
 

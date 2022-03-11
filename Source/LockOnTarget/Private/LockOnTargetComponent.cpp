@@ -487,7 +487,7 @@ void ULockOnTargetComponent::DebugOnTick() const
 {
 	if (bShowTargetInfo)
 	{
-		TArray<ULockOnTargetComponent*> Invaders = GetHelperComponent()->GetInvaders();
+		TSet<ULockOnTargetComponent*> Invaders = GetHelperComponent()->GetInvaders();
 		FString InvadersName;
 
 		for (ULockOnTargetComponent* Invader : Invaders)

@@ -159,7 +159,7 @@ public:
 public:
 	/** Get all Invaders locked on Owner Actor. Usually 1 single player. */
 	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
-	TArray<ULockOnTargetComponent*> GetInvaders() const { return Invaders;}
+	TSet<ULockOnTargetComponent*> GetInvaders() const { return Invaders;}
 
 	/** Is Owner Actor at this moment Targeted by any Invader.*/
 	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
@@ -181,6 +181,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
 	void UnlockAllInvaders();
 
+	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
+	void UpdateMeshComponent(UMeshComponent* NewMeshComponent);
+
 	/** Return implicit UWidgetComponent. */
 	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
 	UWidgetComponent* GetWidgetComponent() const{ return WidgetComponent;}
@@ -198,7 +201,7 @@ public:
 private:
 	//All Invaders. Usually one in standalone. Multiple in Network.
 	UPROPERTY(Transient)
-	TArray<ULockOnTargetComponent*> Invaders;
+	TSet<ULockOnTargetComponent*> Invaders;
 
 /*******************************************************************************************/
 /*******************************  Native Methods  ******************************************/
