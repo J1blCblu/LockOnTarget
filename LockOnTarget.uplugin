@@ -20,13 +20,13 @@
 			"Name": "LockOnTarget",
 			"Type": "Runtime",
 			"LoadingPhase": "Default",
-			"WhitelistPlatforms": [ "Win64", "Win32", "Linux" ]
+			"WhitelistPlatforms": [ "Win64", "Linux" ]
 		},
 		{
 			"Name": "LockOnTargetEditor",
 			"Type": "Editor",
 			"LoadingPhase": "PostEngineInit",
-			"WhitelistPlatforms": [ "Win64", "Win32", "Linux" ]
+			"WhitelistPlatforms": [ "Win64", "Linux" ]
 		}
 	]
 }
