@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 2021-2022 Ivan Baktenkov. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -7,6 +7,10 @@ public class LockOnTarget : ModuleRules
 	public LockOnTarget(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
+
+		//https://forums.unrealengine.com/t/how-to-compile-in-non-unity-mode/94863/5
+		//bUseUnityBuild = false;
+		//bUsePCHFiles = false;
 
 		//Lock On Target Unreal Insights preprocessor definition.
 		PublicDefinitions.Add("LOC_INSIGHTS = 0");
