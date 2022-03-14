@@ -1,4 +1,4 @@
-// Copyright 2021-2022 Ivan Baktenkov. All Rights Reserved.
+// Copyright 2022 Ivan Baktenkov. All Rights Reserved.
 
 #include "Utilities/LOTC_BPLibrary.h"
 #include "Kismet/GameplayStatics.h"
