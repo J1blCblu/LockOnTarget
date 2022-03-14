@@ -1,4 +1,4 @@
-// Copyright 2021-2022 Ivan Baktenkov. All Rights Reserved.
+// Copyright 2022 Ivan Baktenkov. All Rights Reserved.
 
 
 #include "LockOnSubobjects/RotationModes/InterpolationMode.h"
