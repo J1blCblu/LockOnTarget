@@ -37,6 +37,9 @@ Captured by `LockOnTarget component`. Target specific storage and useful methods
 # Known Issues
 List of known [Issues](https://github.com/J1blCblu/LockOnTarget/issues).
 
+# Special Thanks
+ * To [mklabs](https://github.com/mklabs). His delightful [Targeting System](https://github.com/mklabs/ue4-targetsystemplugin) plugin was the starting point.
+
 # License
 Source code of the plugin is licensed under MIT license, and other developers are encouraged to fork the repository,  \
 open issues & pull requests to help the development.
