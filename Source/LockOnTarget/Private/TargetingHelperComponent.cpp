@@ -17,8 +17,10 @@ UTargetingHelperComponent::UTargetingHelperComponent()
 	, WidgetOffset(0.f)
 	, bAsyncLoadWidget(true)
 {
+	//Tick isn't allowed due to the purpose of this component which acts as both storage and subject (for listeners).
 	PrimaryComponentTick.bCanEverTick = false;
-	Sockets.Push(NAME_None);
+
+	Sockets.Add(NAME_None);
 
 	FRichCurve* Curve = HeightOffsetCurve.GetRichCurve();
 	Curve->SetKeyInterpMode(Curve->AddKey(0.f, 50.f), RCIM_Cubic);
@@ -27,6 +29,8 @@ UTargetingHelperComponent::UTargetingHelperComponent()
 	FSoftClassPath WidgetPath = TEXT("WidgetBlueprint'/LockOnTarget/WBP_Target.WBP_Target_C'");
 	WidgetClass = TSoftClassPtr<UUserWidget>(WidgetPath);
 
+	//Don't create the UWidgetComponent for the CDO.
+	//TODO: Maybe wrap the UWidgetComponent with the preprocessor #if !WITH_SERVER_CODE
 	WidgetComponent = HasAnyFlags(RF_ClassDefaultObject) ? nullptr : CreateDefaultSubobject<UWidgetComponent>(TEXT("LockOnWidget"));
 
 	if (WidgetComponent)
@@ -42,18 +46,14 @@ void UTargetingHelperComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	checkf(CaptureRadius < LostRadius && MinDistance < CaptureRadius, TEXT("TargetingHelperComponent in %s has invalid CaptureRadius, LostRadius or MinDistance. Update it properly."), *GetNameSafe(GetOwner()));
-
 	InitMeshComponent();
-	VerifySockets();
 }
 
 void UTargetingHelperComponent::EndPlay(EEndPlayReason::Type Reason)
 {
 	Super::EndPlay(Reason);
 
-	//Remove all Invaders.
-	//Not calling UnlockAllInvaders because LockOnComponent will stop Targeting on next tick automatically after Helper invalidation.
+	//Notify listeners.
 	for (ULockOnTargetComponent* Invader : Invaders)
 	{
 		OnOwnerReleased.Broadcast(Invader);
@@ -75,8 +75,8 @@ void UTargetingHelperComponent::CaptureTarget(ULockOnTargetComponent* Instigator
 		
 		if(!bIsAlreadyBeen)
 		{
-			OnOwnerCaptured.Broadcast(Instigator);
-			UpdateWidget(Socket);
+			OnOwnerCaptured.Broadcast(Instigator, Socket);
+			UpdateWidget(Socket, Instigator);
 		}
 	}
 }
@@ -86,30 +86,7 @@ void UTargetingHelperComponent::ReleaseTarget(ULockOnTargetComponent* Instigator
 	if (IsTargeted() && IsValid(Instigator) && Invaders.Remove(Instigator))
 	{
 		OnOwnerReleased.Broadcast(Instigator);
-		HideWidget();
-	}
-}
-
-void UTargetingHelperComponent::UnlockInvader(ULockOnTargetComponent* Invader)
-{
-	if (IsTargeted())
-	{
-		OnInvadersUnlock.Broadcast(false, Invader);
-	}
-}
-
-void UTargetingHelperComponent::UnlockAllInvaders()
-{
-	if (IsTargeted())
-	{
-		for (ULockOnTargetComponent* Invader : Invaders)
-		{
-			OnOwnerReleased.Broadcast(Invader);
-		}
-
-		Invaders.Empty();
-		OnInvadersUnlock.Broadcast(true, nullptr);
-		OnInvadersUnlock.Clear();
+		HideWidget(Instigator);
 	}
 }
 
@@ -117,20 +94,21 @@ void UTargetingHelperComponent::UnlockAllInvaders()
 /*******************************  Widget Handling  *****************************************/
 /*******************************************************************************************/
 
-void UTargetingHelperComponent::UpdateWidget(const FName& Socket)
+void UTargetingHelperComponent::UpdateWidget(const FName& Socket, ULockOnTargetComponent* Instigator)
 {
-	if (bEnableWidget)
+	if (bEnableWidget && IsValid(Instigator) && Instigator->IsOwnerLocallyControlled())
 	{
 #if LOC_INSIGHTS
 		SCOPED_NAMED_EVENT(LOC_UpdatingWidget, FColor::White);
 #endif
+
 		if (WidgetComponent)
 		{
 			if (!WidgetComponent->GetWidgetClass())
 			{
 				if (WidgetClass.IsNull())
 				{
-					UE_LOG(Log_LOC, Warning, TEXT("Widget class is nullptr. Fill TargetingHelperComponent's WidgetClass field in %s Actor or disable bEnableWidget field."), *GetOwner()->GetName());
+					UE_LOG(Log_LOC, Warning, TEXT("Widget class is nullptr. Fill the TargetingHelperComponent's WidgetClass field in the %s Actor or disable the bEnableWidget field."), *GetOwner()->GetName());
 					return;
 				}
 
@@ -155,9 +133,9 @@ void UTargetingHelperComponent::UpdateWidget(const FName& Socket)
 	}
 }
 
-void UTargetingHelperComponent::HideWidget()
+void UTargetingHelperComponent::HideWidget(ULockOnTargetComponent* Instigator)
 {
-	if (bEnableWidget && WidgetComponent)
+	if (bEnableWidget && WidgetComponent && IsValid(Instigator) && Instigator->IsOwnerLocallyControlled())
 	{
 		WidgetComponent->SetVisibility(false);
 	}
@@ -208,43 +186,29 @@ bool UTargetingHelperComponent::CanBeTargeted_Implementation(ULockOnTargetCompon
 
 bool UTargetingHelperComponent::AddSocket(FName& Socket)
 {
+	bool bReturn = false;
+
 	if (OwnerMeshComponent.IsValid() && OwnerMeshComponent->DoesSocketExist(Socket))
 	{
-		Sockets.AddUnique(Socket);
-
-		return true;
+		Sockets.Add(Socket, &bReturn);
 	}
-
-	return false;
+	
+	return bReturn;
 }
 
 bool UTargetingHelperComponent::RemoveSocket(const FName& Socket)
 {
-	if (Sockets.RemoveSingleSwap(Socket) > 0)
-	{
-		UnlockAllInvaders();
-
-		return true;
-	}
-
-	return false;
+	return Sockets.Remove(Socket) > 0;
 }
 
-bool UTargetingHelperComponent::ChangeRadius(float NewCaptureRadius, float NewLostRadius, float NewMinDistance /* = 100.f */)
+void UTargetingHelperComponent::ChangeRadius(float NewCaptureRadius, float NewLostRadius, float NewMinDistance /* = 100.f */)
 {
-	if (CaptureRadius < LostRadius && MinDistance < CaptureRadius)
-	{
-		CaptureRadius = NewCaptureRadius;
-		LostRadius = NewLostRadius;
-		MinDistance = NewMinDistance;
-
-		return true;
-	}
-
-	return false;
+	LostRadius = FMath::Clamp(FMath::Abs(NewLostRadius), 50.f, FLT_MAX);
+	CaptureRadius = FMath::Clamp(FMath::Abs(NewCaptureRadius), 50.f, LostRadius);
+	MinDistance = FMath::Clamp(FMath::Abs(NewMinDistance), 0.f, CaptureRadius);
 }
 
-FVector UTargetingHelperComponent::GetSocketLocation(const FName& Socket, bool bWithOffset, ULockOnTargetComponent* Instigator) const
+FVector UTargetingHelperComponent::GetSocketLocation(const FName& Socket, bool bWithOffset, const ULockOnTargetComponent* Instigator) const
 {
 	FVector Location;
 
@@ -265,7 +229,7 @@ FVector UTargetingHelperComponent::GetSocketLocation(const FName& Socket, bool b
 	return Location;
 }
 
-void UTargetingHelperComponent::AddOffset(FVector& Location, ULockOnTargetComponent* Instigator) const
+void UTargetingHelperComponent::AddOffset(FVector& Location, const ULockOnTargetComponent* Instigator) const
 {
 	switch (OffsetType)
 	{
@@ -315,7 +279,7 @@ void UTargetingHelperComponent::UpdateMeshComponent(UMeshComponent* NewComponent
 
 USceneComponent* UTargetingHelperComponent::GetMeshComponent() const
 {
-	return OwnerMeshComponent.IsValid() ? OwnerMeshComponent.Get() : GetFirstMeshComponent();
+	return OwnerMeshComponent.IsValid() ? OwnerMeshComponent.Get() : GetRootComponent();
 }
 
 USceneComponent* UTargetingHelperComponent::GetFirstMeshComponent() const
@@ -328,18 +292,31 @@ USceneComponent* UTargetingHelperComponent::GetRootComponent() const
 	return GetOwner() ? GetOwner()->GetRootComponent() : nullptr;
 }
 
-void UTargetingHelperComponent::VerifySockets()
+#if WITH_EDITORONLY_DATA
+void UTargetingHelperComponent::PostEditChangeProperty(FPropertyChangedEvent& Event)
 {
-	//Removes all invalid Sockets.
-	if (OwnerMeshComponent.IsValid())
-	{
-		Sockets.RemoveAllSwap([&](const FName& Socket)
-			{ 
-				return !(OwnerMeshComponent->DoesSocketExist(Socket) || (Socket == NAME_None)); 
-			},
-			false);
+	Super::PostEditChangeProperty(Event);
 
-		Sockets.Shrink();
+	const FName PropertyName = Event.GetPropertyName();
+
+	if (PropertyName == GET_MEMBER_NAME_CHECKED(UTargetingHelperComponent, CaptureRadius))
+	{
+		if (LostRadius < CaptureRadius)
+		{
+			LostRadius = CaptureRadius + 100.f;
+		}
+	}
+	else if (PropertyName == GET_MEMBER_NAME_CHECKED(UTargetingHelperComponent, LostRadius) && CaptureRadius > LostRadius)
+	{
+		if (CaptureRadius > LostRadius)
+		{
+			CaptureRadius = FMath::Clamp(LostRadius - 100.f, 50.f, LostRadius);
+		}
+	}
+
+	if (MinDistance > CaptureRadius)
+	{
+		MinDistance = FMath::Clamp(CaptureRadius - 100.f, 0.f, CaptureRadius);
 	}
 }
-
+#endif

@@ -7,8 +7,10 @@
 #include "RotationModeBase.generated.h"
 
 /**
- * Base rotation mode which return rotation to Target's socket location.
- * Override GetRotation().
+ * Base rotation mode.
+ * Returns the rotation to the Target's socket location.
+ * 
+ * GetRotation() should be overridden.
  */
 UCLASS(Blueprintable, ClassGroup = (LockOnTarget), EditInlineNew, DefaultToInstanced)
 class LOCKONTARGET_API URotationModeBase : public ULockOnSubobjectBase
@@ -18,19 +20,19 @@ class LOCKONTARGET_API URotationModeBase : public ULockOnSubobjectBase
 public:
 	URotationModeBase();
 
-	/** Axes of NewRotation to change. */
+	/** Axes applied to returned rotation. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Base Config", meta = (Bitmask, BitmaskEnum = "ERot"))
 	uint8 RotationAxes;
 
-	/** Clamps NewRotation Pitch value. Where x - min value, y - max value. */
+	/** Clamps the return value of the pitch. Where x - min value, y - max value. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Base Config", meta = (EditCondition = "RotationAxes & ERot::E_Pitch"))
 	FVector2D PitchClamp;
 
-	/** Offset applied to final Rotation. Regardless of Target offset. */
+	/** Offset applied to returned rotation. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Base Config")
 	FRotator OffsetRotation;
 
-	UPROPERTY(EditAnywhere, Category = "Base Config")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Base Config")
 	bool bIsEnabled = true;
 
 /*******************************************************************************************/
@@ -38,40 +40,36 @@ public:
 /*******************************************************************************************/
 public:
 	/**
-	 * Get rotation for LockOnComponent's Control/Owner rotation.
+	 * Used to return the rotation to the LockOnComponent.
 	 * 
 	 * @param CurrentRotation - Current control/owner's rotation.
 	 * @param InstigatorLocation - LockOnComponent's camera/owner location.
-	 * @param TargetLocation - Captured location of Target's socket with world offset.
+	 * @param TargetLocation - Captured location of the Target socket with the world offset.
 	 * @param DeltaTime - WorldDeltaTime.
-	 * @return - Rotation to be applied to Control/Owner rotation.
+	 * @return - Rotation applied to the Control/Owner rotation.
 	 */
 	UFUNCTION(BlueprintNativeEvent)
 	FRotator GetRotation(const FRotator& CurrentRotation, const FVector& InstigatorLocation, const FVector& TargetLocation, float DeltaTime);
 
-	UFUNCTION(BlueprintPure, Category = "LockOnTarget|Rotation Mode")
-	bool IsEnabled() const { return bIsEnabled;}
+protected:
 
-	UFUNCTION(BlueprintCallable, Category = "LockOnTarget|Rotation Mode")
-	void SetIsEnabled(bool bEnable) { bIsEnabled = bEnable;}
-
-	UFUNCTION(BlueprintPure, Category = "LockOnTarget|Rotation Mode")
+	UFUNCTION(BlueprintPure, Category = "LockOnTarget|Rotation Mode", meta = (BlueprintProtected))
 	FRotator GetRotationToTarget(const FVector& LocationFrom, const FVector& LocationTo) const;
 
-	UFUNCTION(BlueprintPure, Category = "LockOnTarget|Rotation Mode")
+	UFUNCTION(BlueprintPure, Category = "LockOnTarget|Rotation Mode", meta = (BlueprintProtected))
 	FRotator GetClampedRotationToTarget(const FVector& LocationFrom, const FVector& LocationTo) const;
 
-	UFUNCTION(BlueprintPure, Category = "LockOnTarget|Rotation Mode")
+	UFUNCTION(BlueprintPure, Category = "LockOnTarget|Rotation Mode", meta = (BlueprintProtected))
 	void AddOffsetToRotation(FRotator& Rotator) const;
 
 /*******************************************************************************************/
 /*******************************  Native Methods   *****************************************/
 /*******************************************************************************************/
 protected:
-	/** Apply only required axes to final rotation. */
+	/** Update only required axes in NewRotation. */
 	void ApplyRotationAxes(const FRotator& CurrentRotation, FRotator& NewRotation) const;
 
-	/** Clamp rotator's pitch with PitchClamp values. */
+	/** Clamp the pitch value. */
 	void ClampPitch(FRotator& Rotation) const;
 
 #if WITH_EDITORONLY_DATA

@@ -4,6 +4,7 @@
 #include "LockOnTargetComponent.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "GameFramework/Actor.h"
+#include "Utilities/LOTC_BPLibrary.h"
 
 #if WITH_EDITORONLY_DATA
 #include "DrawDebugHelpers.h"
@@ -20,8 +21,6 @@ ULazyInterpolationMode::ULazyInterpolationMode()
 
 FRotator ULazyInterpolationMode::GetRotation_Implementation(const FRotator& CurrentRotation, const FVector& InstigatorLocation, const FVector& TargetLocation, float DeltaTime)
 {
-	checkf(BeginInterpAngle > StopInterpAngle, TEXT("LazyInterpolationMode in %s has invalid BeginInterpAngle or StopInterpAngle. Update it properly."), *GetNameSafe(GetLockOn()->GetOwner()));
-
 	float InterpSpeed = InterpolationSpeed;
 	FRotator NewRotation = GetClampedRotationToTarget(InstigatorLocation, TargetLocation);
 
@@ -43,7 +42,7 @@ FRotator ULazyInterpolationMode::GetRotation_Implementation(const FRotator& Curr
 
 bool ULazyInterpolationMode::CanLazyInterpolate_Implementation(const FRotator& NewRotation, const FRotator& CurrentRotation, float& InterpSpeed)
 {
-	float Angle = (180.f) / PI * FMath::Acos(FVector::DotProduct(NewRotation.Vector(), CurrentRotation.Vector()));
+	float Angle = ULOTC_BPLibrary::GetAngleDeg(NewRotation.Vector(), CurrentRotation.Vector());
 
 	if (bLazyInterpolationInProgress)
 	{
@@ -70,6 +69,26 @@ bool ULazyInterpolationMode::CanLazyInterpolate_Implementation(const FRotator& N
 }
 
 #if WITH_EDITORONLY_DATA
+
+void ULazyInterpolationMode::PostEditChangeProperty(FPropertyChangedEvent& Event)
+{
+	FName PropertyName = Event.GetPropertyName();
+
+	if (PropertyName == GET_MEMBER_NAME_CHECKED(ULazyInterpolationMode, BeginInterpAngle))
+	{
+		if (BeginInterpAngle < StopInterpAngle)
+		{
+			StopInterpAngle = FMath::Clamp(BeginInterpAngle - 1.f, 0.f, BeginInterpAngle);
+		}
+	}
+	else if (PropertyName == GET_MEMBER_NAME_CHECKED(ULazyInterpolationMode, StopInterpAngle))
+	{
+		if (StopInterpAngle > BeginInterpAngle)
+		{
+			BeginInterpAngle = FMath::Clamp(StopInterpAngle + 1.f, 0.f, 180.f);
+		}
+	}
+}
 
 void ULazyInterpolationMode::DrawDebugInfo() const
 {

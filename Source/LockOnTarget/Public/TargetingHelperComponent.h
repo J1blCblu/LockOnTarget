@@ -14,29 +14,30 @@ class UMeshComponent;
 class USceneComponent;
 class AActor;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnOwnerCaptured, ULockOnTargetComponent*, Invader);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnOwnerCaptured, ULockOnTargetComponent*, Invader, const FName&, Socket);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnOwnerReleased, ULockOnTargetComponent*, OldInvader);
 
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnInvadersUnlock, bool, ULockOnTargetComponent*);
-
 /**
- * Used by Lock On Component for Capturing and providing useful information to it.
+ * Used by the LockOnTargetComponent to capture and provide specific information about the Target.
  * 
  * Some features:
- *  - Can be added to any AActor subclass(also during runtime).
+ *  - Can be added to any AActor subclass (also during runtime).
  *	- Customizable settings for each Target.
- *	- Capturing Targets with multiple sockets (e.g. for capturing head, body or legs in large creatures (like Dragon) and switching between them).
- *  - Add custom rules for capturing the target (with overriding CanBeTargeted() method, e.g. not capturing teammates).
- *  - Adding and removing sockets at runtime.
- *  - Ability to Unlock All Invaders(LockOnTargetComponent) or specific one from it(Target).
+ *	- Targets can have multiple sockets (e.g. head, body, calf, etc.).
+ *  - Add custom rules for capturing the target (override the CanBeTargeted() method, e.g. don't capture 'allies').
+ *  - Add and remove sockets at runtime.
  *  - Determine the mesh component by name.
- *  - Various useful information and methods that may be needed for Target.
- *  - Implicitly adds UWidgetComponent (use GetWidgetComponent() to access it).
+ *  - Various useful information and methods that may be needed for the Target.
+ *  - Implicitly adds a UWidgetComponent (use the GetWidgetComponent() to access it).
  * 
- *	@see ULockOnTargetComponent, UTargetHandlerBase, UWithoutInterpolationRotationMode.
+ * Is not replicated directly. Invaders are added by the LockOnTargetComponent which is replicated.
+ * Also, the LockOnTargetComponent finds the Target locally and then notifies the server which Target and Sockets are captured.
+ * Due to this every state update must be done using RPCs or leave the Component state static.
+ * 
+ * @see ULockOnTargetComponent.
  */
 
-UCLASS(Blueprintable, ClassGroup = (LockOnTarget), HideCategories = (Components, Activation, ComponentTick, Cooking, Sockets, ComponentReplication, Collision), meta = (BlueprintSpawnableComponent))
+UCLASS(Blueprintable, ClassGroup = (LockOnTarget), HideCategories = (Components, Activation, ComponentTick, Cooking, Sockets, Collision), meta = (BlueprintSpawnableComponent))
 class LOCKONTARGET_API UTargetingHelperComponent : public UActorComponent
 {
 	GENERATED_BODY()
@@ -46,34 +47,42 @@ public:
 	friend FHelperVisualizer;
 
 protected:
+	// UActorComponent
 	virtual void BeginPlay() override;
 	virtual void EndPlay(EEndPlayReason::Type Reason) override;
 
+#if WITH_EDITORONLY_DATA
+	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& Event) override;
+#endif
+	//~UActorComponent
+
 public:
 	/** 
-	 * Can owner be captured by LockOnTargetComponent.
-	 * (e.g. registering owner's death without destroying it by GC).
+	 * Can the owner be captured by the LockOnTargetComponent.
+	 * (e.g. registering the owner's death without destroying it by GC).
 	 * 
-	 * Also method CanBeTarget() can be overriden for registering custom capture state.
-	 * (e.g. team system. CanBeTargeted() can be overwritten for not capturing friendies.
+	 * Also, the method CanBeTargeted() can be overridden to register a custom capture state.
+	 * (e.g. register 'team system'. Don't capture 'allies').
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings")
 	bool bCanBeTargeted;
 
 	/** 
-	 * Provide LockOnTargetComponent proper mesh component for finding Sockets and Widget attachment.
-	 * If mesh component invalid or None then will try find first MeshComponent in Owner's components hierarchy.
+	 * Provide the LockOnTargetComponent the proper mesh component for finding the Sockets and the Widget attachment.
+	 * If the mesh component is invalid or None then will try to find the first MeshComponent in the Owner's components hierarchy.
 	 */
 	UPROPERTY(EditAnywhere, Category = "Default Settings")
 	FName MeshName;
 	
 	/** 
 	 * Sockets for capturing.
-	 * If num == 0 then Target can't be captured.
-	 * NAME_None will attach widget to root component.
+	 * If num == 0 then the Target can't be captured.
+	 * NAME_None will attach the widget to the root component.
+	 * 
+	 * Due to performance reasons Sockets aren't validated!
 	 */
 	UPROPERTY(EditAnywhere, Category = "Default Settings")
-	TArray<FName> Sockets;
+	TSet<FName> Sockets;
 
 	/** Target capture radius. Should be < Lost radius. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Default Settings", meta = (ClampMin = 50.f, UIMin = 50.f))
@@ -83,41 +92,41 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Default Settings", meta = (ClampMin = 50.f, UIMin = 50.f))
 	float LostRadius;
 
-	/** Maybe helpful for not capturing Target behind owner back(distance calculates from camera location). */
+	/** May be helpful to avoid capturing the Target behind the Invader's back (distance is calculated from the camera location). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Default Settings", meta = (ClampMin = 0.f, UIMin = 0.f))
 	float MinDistance;
 
-	/** Custom offset added to socket location while target locked. */
+	/** Custom offset is added to the socket location while the target is locked. */
 	UPROPERTY(EditAnywhere, Category = "Target Offset")
 	EOffsetType OffsetType;
 
-	/** Target offset in camera space. */
+	/** Target offset in the camera space. */
 	UPROPERTY(EditAnywhere, Category = "Target Offset", meta = (EditCondition = "OffsetType == EOffsetType::EConstant"))
 	FVector TargetOffset;
 
-	/** Curve based target height offset in camera space. */
+	/** Curve distance based target height offset in the camera space. */
 	UPROPERTY(EditAnywhere, Category = "Target Offset", meta = (EditCondition = "OffsetType == EOffsetType::EAdaptiveCurve"))
 	FRuntimeFloatCurve HeightOffsetCurve;
 
-	/** Should Target be marked with Widget attached to Socket. */
+	/** Should the Target be marked with the Widget which is attached to the Socket. */
 	UPROPERTY(EditAnywhere, Category = "Widget")
 	bool bEnableWidget;
 
-	/** Widget Class. Safe to fill and not use. Uses soft class and load only if needed. */
+	/** Widget Class. Safe to fill and don't use. Uses the soft class and loads only if it's needed. */
 	UPROPERTY(EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget"))
 	TSoftClassPtr<class UUserWidget> WidgetClass;
 
-	/** Offset applied to Widget. */
+	/** Offset is applied to the Widget. */
 	UPROPERTY(EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget"))
 	FVector WidgetOffset;
 
-	/** Load UUserWidget class async, otherwise sync. */
+	/** Load the Widget class async, otherwise sync. */
 	UPROPERTY(AdvancedDisplay, EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget"))
 	bool bAsyncLoadWidget;
 
 #if WITH_EDITORONLY_DATA
 protected:
-	/** Visualize debug info. */
+	/** Visualize the debug info. */
 	UPROPERTY(AdvancedDisplay, EditAnywhere, Category = "Default Settings")
 	bool bVisualizeDebugInfo = false;
 #endif
@@ -126,80 +135,71 @@ protected:
 /*******************************  Delegates  ***********************************************/
 /*******************************************************************************************/
 public:
-	/** Notify when Owner has been targeted. */
+	/** Notifies when the Owner has been targeted. */
 	UPROPERTY(BlueprintAssignable)
 	FOnOwnerCaptured OnOwnerCaptured;
 
-	/** Notify when Owner has been unlocked. */
+	/** Notifies when the Owner has been unlocked. */
 	UPROPERTY(BlueprintAssignable)
 	FOnOwnerReleased OnOwnerReleased;
-
-	/** Used by LockOnTargetComponent for Clearing Target on Request. */
-	FOnInvadersUnlock OnInvadersUnlock;
 
 /*******************************************************************************************/
 /*******************************  BP Override  *********************************************/
 /*******************************************************************************************/
 public:
 	/** 
-	 * Can owner be Captured. By default use bCanBeTargeted value.
-	 * BP Override method for custom logic.
-	 * e.g. process Team system for not capturing allies.
+	 * Can the owner be captured. By default uses the bCanBeTargeted value.
+	 * BP override method for the custom logic.
+	 * e.g. process the 'team system' for not capturing 'allies'.
 	 */
 	UFUNCTION(BlueprintNativeEvent, BlueprintPure, Category = "TargetingHelper")
 	bool CanBeTargeted(ULockOnTargetComponent* Instigator) const;
 
-	/** Provide Custom Target offset. Offset type should be set to CustomOffset. */
+	/** Provide the custom Target offset. The OffsetType should be set to the CustomOffset value. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "TargetingHelper")
-	FVector GetCustomTargetOffset(ULockOnTargetComponent* Instigator) const;
+	FVector GetCustomTargetOffset(const ULockOnTargetComponent* Instigator) const;
 	
 /*******************************************************************************************/
 /*******************************  BP Methods  **********************************************/
 /*******************************************************************************************/
 public:
-	/** Get all Invaders locked on Owner Actor. Usually 1 single player. */
+	/** Get all the Invaders that are locked on the Owner. Usually 1 in a standalone game. */
 	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
 	TSet<ULockOnTargetComponent*> GetInvaders() const { return Invaders;}
 
-	/** Is Owner Actor at this moment Targeted by any Invader.*/
+	/** Whether the Owner is currently Targeted by any Invader.*/
 	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
 	bool IsTargeted() const { return Invaders.Num() > 0; }
 
-	/** Add socket without all Invaders unlocking if captured. */
+	/** Add a Socket at runtime. */
 	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
 	bool AddSocket(UPARAM(ref) FName& Socket);
 
-	/** Remove socket and unlock all Invaders if captured. */
+	/** Remove a socket at runtime. */
 	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
 	bool RemoveSocket(const FName& Socket);
 
-	/** Unlock specific Invader if exists. */
-	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
-	void UnlockInvader(ULockOnTargetComponent* Invader);
-
-	/** Unlock all invaders. */
-	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
-	void UnlockAllInvaders();
-
+	/** Update the MeshComponent for capturing the sockets. */
 	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
 	void UpdateMeshComponent(UMeshComponent* NewMeshComponent);
 
-	/** Return implicit UWidgetComponent. */
+	/** Return the implicit UWidgetComponent. */
 	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
 	UWidgetComponent* GetWidgetComponent() const{ return WidgetComponent;}
 
+	/** Get all sockets. */
 	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
-	TArray<FName> GetSockets() const {return Sockets; }
+	TSet<FName> GetSockets() const {return Sockets; }
 
-	/** @return - Is successfully changed. */
+	/** Update the CaptureRadius, LostRadius, MinDistance. */
 	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
-	bool ChangeRadius(float NewCaptureRadius, float NewLostRadius, float NewMinDistance = 100.f);
+	void ChangeRadius(float NewCaptureRadius = 2000.f, float NewLostRadius = 2100.f, float NewMinDistance = 100.f);
 
 /*******************************************************************************************/
 /*******************************  Native Fields  *******************************************/
 /*******************************************************************************************/
 private:
-	//All Invaders. Usually one in standalone. Multiple in Network.
+	//All Invaders. Usually 1 in standalone. Multiple in Network.
 	UPROPERTY(Transient)
 	TSet<ULockOnTargetComponent*> Invaders;
 
@@ -209,22 +209,23 @@ private:
 
 	/** Class Interface. */
 public:
-	/** Called for inform TargetingHelperComponent that it has been Targeted.*/
-	void CaptureTarget(ULockOnTargetComponent* Instigator, const FName& Socket);
+	/** Called to inform the TargetingHelperComponent that it's been Targeted.*/
+	virtual void CaptureTarget(ULockOnTargetComponent* Instigator, const FName& Socket);
 
-	/** Called for inform TargetingHelperComponent that it has been Released.*/
-	void ReleaseTarget(ULockOnTargetComponent* Instigator);
+	/** Called to inform the TargetingHelperComponent that it's been Released.*/
+	virtual void ReleaseTarget(ULockOnTargetComponent* Instigator);
 
-	/** @return	- World socket location. bWithoffset = true should be with instigator for camera space offsets. */
-	FVector GetSocketLocation(const FName& Socket, bool bWithOffset = false, ULockOnTargetComponent* Instigator = nullptr) const;
+	/** @return	- World socket location. bWithoffset = true should be with the instigator for the camera space offset. */
+	FVector GetSocketLocation(const FName& Socket, bool bWithOffset = false, const ULockOnTargetComponent* Instigator = nullptr) const;
 	/** ~Class Interface. */
 
-	/** Widget Handling. */
 public:
-	void UpdateWidget(const FName& Socket);
-	void HideWidget();
+	/** Widget Handling. */
+	void UpdateWidget(const FName& Socket, ULockOnTargetComponent* Instigator);
+	void HideWidget(ULockOnTargetComponent* Instigator);
 
 private:
+	//TODO: Maybe wrap the UWidgetComponent with the preprocessor #if !WITH_SERVER_CODE
 	UPROPERTY(Transient)
 	class UWidgetComponent* WidgetComponent;
 
@@ -232,18 +233,16 @@ private:
 	void AsyncLoadWidget(TSoftClassPtr<UUserWidget> Widget);
 	/** ~Widget Handling. */
 
-	/** Cached mesh component for socket location and widget attachment. */
 private:
+	/** Cached mesh component is used to calculate the socket location and the widget attachment. */
 	mutable TWeakObjectPtr<UMeshComponent> OwnerMeshComponent;
 	USceneComponent* GetMeshComponent() const;
 	USceneComponent* GetFirstMeshComponent() const;
 	USceneComponent* GetRootComponent() const;
-	/** ~Cached mesh component for socket location and widget attachment. */
 
 private:
-	void AddOffset(FVector& Location, ULockOnTargetComponent* Instigator) const;
+	void AddOffset(FVector& Location, const ULockOnTargetComponent* Instigator) const;
 	void InitMeshComponent() const;
-	void VerifySockets();
 };
 
 template <typename T>

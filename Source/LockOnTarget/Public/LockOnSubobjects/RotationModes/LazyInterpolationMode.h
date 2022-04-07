@@ -6,12 +6,15 @@
 #include "LazyInterpolationMode.generated.h"
 
 /**
- * Lazy Interpolation Mode. Intended only for ControlRotation.
- * The main advantage is that the camera doesn't shake in free zone when the captured socket is moving along a sinusoid.
+ * Lazy Interpolation Mode. Intended only for the ControlRotation.
+ * The main advantage is that the camera doesn't shake in the free range when the captured socket is moving along a sinusoid.
  * 
- * Interpolates only if Angle between Target and current rotation is more then BeginInterpAngle.
- * Stop Interpolation when Angle reaches StopInterpAngle.
- * Interpolation Speed "interpolates" in SmoothingAngleRange between SmoothRangeRatioClamp values.
+ * Interpolates only if the angle between the Target and the current rotation is more then BeginInterpAngle.
+ * Stops interpolation when the angle reaches StopInterpAngle.
+ * Interpolation speed "interpolates" in SmoothingAngleRange between the values of SmoothRangeRatioClamp.
+ * 
+ * GetRotation() should be overridden.
+ * @see URotationModeBase.
  */
 UCLASS(Blueprintable, ClassGroup = (LockOnTarget))
 class LOCKONTARGET_API ULazyInterpolationMode : public UInterpolationMode
@@ -22,37 +25,37 @@ public:
 	ULazyInterpolationMode();
 
 	/**
-	 * Angle beyond which interpolation starts.
+	 * Angle beyond which the interpolation starts.
 	 * Should be > StopInterpAngle.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lazy Interpolation", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f))
 	float BeginInterpAngle;
 
 	/**
-	 * Angle reaching which interpolation stops.
+	 * Angle reaching which the interpolation stops.
 	 * Should be < BeginInterpAngle.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lazy Interpolation", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f))
 	float StopInterpAngle;
 
 	/**
-	 * Range starts after StopInterpAngle. e.g. if StopInterpAngle = 3.f and SmoothingAngleRange = 4.f then range will be [3.f, 7.f].
-	 * If Angle between Forward vector(camera/owner) and Vector to Target = 5.f then Ratio will be (5.f - 3.f) / 4.f = 0.5f.
-	 * This ratio will be clamped by [MinInterpSpeedRatio, 1.f] and then multiplied by InterpSpeed.
+	 * Angle range starts after the StopInterpAngle. e.g. if StopInterpAngle = 3.f and SmoothingAngleRange = 4.f then the range will be [3.f, 7.f].
+	 * If the angle between the forward vector(camera/owner) and the vector to the Target = 5.f then the ratio will be (5.f - 3.f) / 4.f = 0.5f.
+	 * This ratio will be clamped in [MinInterpSpeedRatio, 1.f] and then multiplied by the InterpSpeed.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lazy Interpolation", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f))
 	float SmoothingAngleRange;
 	
 	/** 
-	 * Minimum interpolation speed ratio. Ratio will be [MinInterpSpeedRatio, 1.f].
-	 * The closer the value is to 1.f, the sharper the interpolation will be in SmoothingAngleRange.
+	 * Minimum interpolation speed ratio. The full ratio will be [MinInterpSpeedRatio, 1.f].
+	 * The closer the value is to 1.f, the sharper the interpolation will be in the SmoothingAngleRange.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lazy Interpolation", meta = (ClampMin = 0.05f, ClampMax = 1.f, UIMin = 0.05f, UIMax = 1.f))
 	float MinInterpSpeedRatio;
 
 #if WITH_EDITORONLY_DATA
 
-	/** Intended only for Control rotation. Not work correctly if Rotation actually clamped by PitchClamp. */
+	/** Intended only for the ControlRotation. Not visualize correctly if Rotation actually clamped by PitchClamp. */
 	UPROPERTY(EditAnywhere, Category = "Lazy Interpolation")
 	bool bVisualizeOnControlRotation = false;
 #endif
@@ -61,7 +64,9 @@ public:
 /*******************************  Override Methods   ***************************************/
 /*******************************************************************************************/
 public:
+	/** URotationModeBase */
 	virtual FRotator GetRotation_Implementation(const FRotator& CurrentRotation, const FVector& InstigatorLocation, const FVector& TargetLocation, float DeltaTime) override;
+	/** ~URotationModeBase */
 
 protected:
 	UFUNCTION(BlueprintNativeEvent)
@@ -74,6 +79,7 @@ private:
 	bool bLazyInterpolationInProgress;
 
 #if WITH_EDITORONLY_DATA
+	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& Event) override;
 	void DrawDebugInfo() const;
 #endif
 };

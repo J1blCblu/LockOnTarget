@@ -1,22 +1,22 @@
 // Copyright 2022 Ivan Baktenkov. All Rights Reserved.
 
 #include "LockOnSubobjects/TargetHandlers/DefaultTargetHandler.h"
-#include "TargetingHelperComponent.h"
-#include "LockOnTargetComponent.h"
-#include "Utilities/Structs.h"
-#include "Utilities/LOTC_BPLibrary.h"
-#include "UObject/UObjectIterator.h"
-#include "TimerManager.h"
-#include "GameFramework/PlayerController.h"
-#include "Engine/World.h"
 #include "CollisionQueryParams.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
+#include "LockOnTargetComponent.h"
+#include "TargetingHelperComponent.h"
+#include "TimerManager.h"
+#include "UObject/UObjectIterator.h"
+#include "Utilities/LOTC_BPLibrary.h"
+#include "Utilities/Structs.h"
 
 #if WITH_EDITORONLY_DATA
 #include "DrawDebugHelpers.h"
 #endif
 
 UDefaultTargetHandler::UDefaultTargetHandler()
-	: AutoFindTargetFlags(0b1111)
+	: AutoFindTargetFlags(0b11111)
 	, bScreenCapture(true)
 	, FindingScreenOffset(15.f, 10.f)
 	, SwitchingScreenOffset(5.f, 0.f)
@@ -25,6 +25,7 @@ UDefaultTargetHandler::UDefaultTargetHandler()
 	, AngleWeightWhileFinding(0.85f)
 	, AngleWeightWhileSwitching(0.85f)
 	, TrigonometricInputWeight(0.3f)
+	, CameraRotationOffsetForCalculations(0.f)
 	, TrigonometricAngleRange(60.f)
 	, bLineOfSightCheck(true)
 	, LostTargetDelay(1.5f)
@@ -54,16 +55,22 @@ bool UDefaultTargetHandler::SwitchTarget_Implementation(FTargetInfo& TargetInfo,
 
 bool UDefaultTargetHandler::CanContinueTargeting_Implementation()
 {
-	//Check if TargetActor or HelperComponent pending to kill.
-	if (!IsValid(GetLockOn()->GetTarget()) || !IsValid(GetLockOn()->GetHelperComponent()))
+	//Check if the TargetingHelperComponent or the TargetActor are pending to kill.
+	if (!IsValid(GetLockOn()->GetTarget()))
 	{
 		return HandleTargetClearing(EUnlockReasonBitmask::E_TargetInvalidation);
 	}
 
-	//Check helper component state.
+	//Check the TargetingHelperComponent state.
 	if (!GetLockOn()->GetHelperComponent()->CanBeTargeted(GetLockOn()))
 	{
 		return HandleTargetClearing(EUnlockReasonBitmask::E_HelperComponentDiscard);
+	}
+
+	//Check the validity of the captured socket.
+	if (!GetLockOn()->GetHelperComponent()->Sockets.Contains(GetLockOn()->GetCapturedSocket()))
+	{
+		return HandleTargetClearing(EUnlockReasonBitmask::E_CapturedSocketInvalidation);
 	}
 
 	float DistanceToTarget = (GetLockOn()->GetTarget()->GetActorLocation() - GetLockOn()->GetCameraLocation()).Size();
@@ -75,7 +82,7 @@ bool UDefaultTargetHandler::CanContinueTargeting_Implementation()
 	}
 
 	//Line of Sight check.
-	if (bLineOfSightCheck && LostTargetDelay >= 0.f) //do not trace if timer < 0.f.
+	if (bLineOfSightCheck && LostTargetDelay > 0.f) //don't trace if timer <= 0.f.
 	{
 		LineOfSightTrace(GetLockOn()->GetTarget(), GetLockOn()->GetCapturedLocation()) ? StopLineOfSightTimer() : StartLineOfSightTimer();
 	}
@@ -105,7 +112,7 @@ FTargetInfo UDefaultTargetHandler::FindTargetNative(float PlayerInput /*= -1.f*/
 			SCOPED_NAMED_EVENT(LOC_TatgetCalculations, FColor::Green);
 #endif
 
-			const TArray<FName>& TargetSockets = It->Sockets;
+			const TSet<FName>& TargetSockets = It->Sockets;
 
 			for (const FName& TargetSocket : TargetSockets)
 			{
@@ -125,7 +132,7 @@ FTargetInfo UDefaultTargetHandler::FindTargetNative(float PlayerInput /*= -1.f*/
 #if WITH_EDITORONLY_DATA
 					if (bDisplayModifier)
 					{
-						DrawDebugString(GetWorld(), SocketLocation, FString::Printf(TEXT("Modifier %.1f\n"), CurrentModifier), nullptr, ModifierColor, ModifierDuration, false, 1.2f);
+						DrawDebugString(GetWorld(), SocketLocation, FString::Printf(TEXT("%.1f\n"), CurrentModifier), nullptr, ModifierColor, ModifierDuration, false, 1.2f);
 					}
 #endif
 				}
@@ -142,21 +149,21 @@ bool UDefaultTargetHandler::IsTargetable(UTargetingHelperComponent* HelpComp) co
 	SCOPED_NAMED_EVENT(LOC_IsTargetable, FColor::Red);
 #endif
 
-	/** Check HelperComponent condition. */
-	if(!HelpComp->CanBeTargeted(GetLockOn()))
+	/** Check TargetingHelperComponent's condition. */
+	if (!HelpComp->CanBeTargeted(GetLockOn()))
 	{
 		return false;
 	}
 
 	AActor* HelperOwner = HelpComp->GetOwner();
 
-	/** Check validity of HelperComponent's Owner. */
+	/** Check validity of TargetingHelperComponent's Owner. */
 	if (!IsValid(HelperOwner))
 	{
 		return false;
 	}
 
-	/** Check that Candidate is not CurrentTarget(if exist) or Owner. */
+	/** Check that Candidate is not the current Target (if exist) or the Owner. */
 	if (HelperOwner == GetLockOn()->GetTarget() || HelperOwner == GetLockOn()->GetOwner())
 	{
 		return false;
@@ -165,14 +172,14 @@ bool UDefaultTargetHandler::IsTargetable(UTargetingHelperComponent* HelpComp) co
 	const FVector DirectionToActor = HelperOwner->GetActorLocation() - GetLockOn()->GetCameraLocation();
 	const float Distance = DirectionToActor.Size();
 
-	/** MinDistance to Camera check. */
-	if (Distance < HelpComp->MinDistance)
+	/** Capture the Target radius check. */
+	if (Distance > HelpComp->CaptureRadius)
 	{
 		return false;
 	}
 
-	/** Capture Target radius check. */
-	if (Distance > HelpComp->CaptureRadius)
+	/** MinDistance to the Camera check. */
+	if (Distance < HelpComp->MinDistance)
 	{
 		return false;
 	}
@@ -188,7 +195,7 @@ bool UDefaultTargetHandler::IsSocketValid(const FName& Socket, UTargetingHelperC
 		return false;
 	}
 
-	//Check range for Player input.
+	//Check the range for the Player input.
 	if (GetLockOn()->IsTargetLocked())
 	{
 		const FVector OriginPoint = GetLockOn()->GetCapturedLocation();
@@ -213,7 +220,7 @@ bool UDefaultTargetHandler::IsSocketValid(const FName& Socket, UTargetingHelperC
 	else
 	{
 		const FVector DirectionToSocket = SocketLocation - GetLockOn()->GetCameraLocation();
-		const float Angle = ULOTC_BPLibrary::GetAngle(GetLockOn()->GetCameraForwardVector(), DirectionToSocket);
+		const float Angle = ULOTC_BPLibrary::GetAngleDeg(GetLockOn()->GetCameraForwardVector(), DirectionToSocket);
 
 		if (Angle > CaptureAngle)
 		{
@@ -227,14 +234,14 @@ bool UDefaultTargetHandler::IsSocketValid(const FName& Socket, UTargetingHelperC
 float UDefaultTargetHandler::CalculateTargetModifier_Implementation(const FVector& Location, UTargetingHelperComponent* TargetHelperComponent, float PlayerInput) const
 {
 	const FVector CameraLocation = GetLockOn()->GetCameraLocation();
-	const FVector ForwardVector = GetLockOn()->IsTargetLocked() ? GetLockOn()->GetCapturedLocation() - CameraLocation : (GetLockOn()->GetCameraRotation().Quaternion() * FRotator(ScreenCenterOffsetWhileFinding.Y, ScreenCenterOffsetWhileFinding.X, 0.f).Quaternion()).Rotator().Vector();
+	const FVector VectorForAngleCalculation = GetLockOn()->IsTargetLocked() ? GetLockOn()->GetCapturedLocation() - CameraLocation : (GetLockOn()->GetCameraRotation().Quaternion() * CameraRotationOffsetForCalculations.Quaternion()).Rotator().Vector();
 	const FVector Direction = Location - CameraLocation;
 
 	float FinalModifier = 1000.f;
 
-	//Final modifier = distance between Owner and Target.
+	//Final modifier = distance between the Owner and the Target.
 	//In below sections Final modifier will be divided into 2 parts as a percentage.
-	//1 part will be unmodified and another will be modified by weights.
+	//1 part will be unmodified and another will be modified by the weights.
 	//At the end 2 parts will be summed.
 
 	if (bCalculateDistance)
@@ -244,12 +251,12 @@ float UDefaultTargetHandler::CalculateTargetModifier_Implementation(const FVecto
 	}
 
 	//Ange weight modifier calculation
-	if (!FMath::IsNearlyZero(AngleWeightWhileFinding, 0.001f) || !FMath::IsNearlyZero(AngleWeightWhileSwitching, 0.001f))
+	if (!FMath::IsNearlyZero(AngleWeightWhileFinding, 1e-3f) || !FMath::IsNearlyZero(AngleWeightWhileSwitching, 1e-3f))
 	{
-		const float Angle = ULOTC_BPLibrary::GetAngle(Direction, ForwardVector);
+		const float Angle = ULOTC_BPLibrary::GetAngleDeg(Direction, VectorForAngleCalculation);
 		const float AngleRatio = (Angle / 180.f);
 
-		float FM1 = FinalModifier * (PlayerInput < 0.f ? AngleWeightWhileFinding : AngleWeightWhileSwitching);
+		float FM1 = FinalModifier * (GetLockOn()->IsTargetLocked() ? AngleWeightWhileSwitching : AngleWeightWhileFinding);
 		const float FM2 = FinalModifier - FM1;
 
 		FM1 *= AngleRatio;
@@ -257,7 +264,7 @@ float UDefaultTargetHandler::CalculateTargetModifier_Implementation(const FVecto
 	}
 
 	//Player trigonometric input modifier calculation.
-	if (GetLockOn()->IsTargetLocked() && !FMath::IsNearlyZero(TrigonometricInputWeight, 0.001f))
+	if (GetLockOn()->IsTargetLocked() && !FMath::IsNearlyZero(TrigonometricInputWeight, 1e-3f))
 	{
 		const float TrigAngleToTarget = ULOTC_BPLibrary::GetTrigonometricAngle3D(Location, GetLockOn()->GetCapturedLocation(), GetLockOn()->GetCameraRotation());
 		const float DeltaTrigAngle = FMath::FindDeltaAngleDegrees(PlayerInput, TrigAngleToTarget);
@@ -286,14 +293,14 @@ bool UDefaultTargetHandler::SwitchTargetNative(FTargetInfo& TargetInfo, float Pl
 	{
 		if (NewSocket.Key != GetLockOn()->GetCapturedSocket())
 		{
-			//If we find NewTarget and Socket for switching in current Target.
+			//If we find the NewTarget with the socket or the Socket for the current Target.
 			float NewTargetModifier = CalculateTargetModifier(NewTargetInfo.HelperComponent->GetSocketLocation(NewTargetInfo.SocketForCapturing), NewTargetInfo.HelperComponent, PlayerInput);
 
 			TargetInfo = NewSocket.Value < NewTargetModifier ? FTargetInfo(GetLockOn()->GetHelperComponent(), NewSocket.Key) : NewTargetInfo;
 		}
 		else
 		{
-			//if we find New Target, but not New Socket in Current Target.
+			//if we find the new Target, but not the new Socket in the current Target.
 			TargetInfo = NewTargetInfo;
 		}
 
@@ -301,7 +308,7 @@ bool UDefaultTargetHandler::SwitchTargetNative(FTargetInfo& TargetInfo, float Pl
 	}
 	else
 	{
-		//if we doesn't find New Target and find New Socket in Current Target.
+		//if we doesn't find the new Target but find the new Socket in the Current Target.
 		if (NewSocket.Key != GetLockOn()->GetCapturedSocket())
 		{
 			TargetInfo = FTargetInfo(GetLockOn()->GetHelperComponent(), NewSocket.Key);
@@ -317,13 +324,13 @@ TPair<FName, float> UDefaultTargetHandler::TrySwitchSocket(float PlayerInput) co
 	const FName& CapturedSocket = GetLockOn()->GetCapturedSocket();
 	UTargetingHelperComponent* const CapturedHC = GetLockOn()->GetHelperComponent();
 
-	TPair<FName, float> BestSocket {CapturedSocket, FLT_MAX};
+	TPair<FName, float> BestSocket{CapturedSocket, FLT_MAX};
 
-	const TArray<FName>& TargetSockets = CapturedHC->Sockets;
+	const TSet<FName>& TargetSockets = CapturedHC->Sockets;
 
 	for (const FName& Socket : TargetSockets)
 	{
-		//Skip already captured socket.
+		//Skip the already captured socket.
 		if (Socket == CapturedSocket)
 		{
 			continue;
@@ -331,18 +338,18 @@ TPair<FName, float> UDefaultTargetHandler::TrySwitchSocket(float PlayerInput) co
 
 		const FVector SocketLocation = CapturedHC->GetSocketLocation(Socket);
 
-		//check socket for validity.
+		//Check the socket validity.
 		if (!IsSocketValid(Socket, CapturedHC, PlayerInput, SocketLocation))
 		{
 			continue;
 		}
 
-		//Calculate Iterated socket modifier.
+		//Calculate the socket modifier.
 		float CurrentModifier = CalculateTargetModifier(SocketLocation, CapturedHC, PlayerInput);
 
 		if (CurrentModifier < BestSocket.Value)
 		{
-			//Assign iterated socket to new Best Socket.
+			//Assign the socket to the best Socket.
 			BestSocket.Key = Socket;
 			BestSocket.Value = CurrentModifier;
 		}
@@ -350,7 +357,7 @@ TPair<FName, float> UDefaultTargetHandler::TrySwitchSocket(float PlayerInput) co
 #if WITH_EDITORONLY_DATA
 		if (bDisplayModifier)
 		{
-			DrawDebugString(GetWorld(), CapturedHC->GetSocketLocation(Socket), FString::Printf(TEXT("Modifier %.1f\n"), CurrentModifier), nullptr, ModifierColor, ModifierDuration, false, 1.2f);
+			DrawDebugString(GetWorld(), CapturedHC->GetSocketLocation(Socket), FString::Printf(TEXT("%.1f\n"), CurrentModifier), nullptr, ModifierColor, ModifierDuration, false, 1.2f);
 		}
 #endif
 	}
@@ -364,7 +371,7 @@ TPair<FName, float> UDefaultTargetHandler::TrySwitchSocket(float PlayerInput) co
 
 void UDefaultTargetHandler::StartLineOfSightTimer()
 {
-	if (GetWorld() && !GetWorld()->GetTimerManager().IsTimerActive(LOSDelayHandler) && LostTargetDelay >= 0.f)
+	if (GetWorld() && !GetWorld()->GetTimerManager().IsTimerActive(LOSDelayHandler))
 	{
 		FTimerDelegate TimerCallback;
 		TimerCallback.BindUObject(this, &UDefaultTargetHandler::OnLineOfSightFail);
@@ -400,7 +407,7 @@ bool UDefaultTargetHandler::LineOfSightTrace(const AActor* const Target, const F
 		ObjParams.AddObjectTypesToQuery(TraceChannel);
 	}
 
-	//SCENE QUERY PARAMS for debug. Tag = WeaponTrace. In console print TraceTag<WeaponTrace> or TraceTagAll
+	//SCENE QUERY PARAMS for debug. Tag = LockOnTrace. In console print TraceTag<LockOnTrace> or TraceTagAll
 	FCollisionQueryParams TraceParams(SCENE_QUERY_STAT(LockOnTrace));
 	TraceParams.AddIgnoredActor(Target);
 	TraceParams.AddIgnoredActor(GetLockOn()->GetOwner());
@@ -414,13 +421,8 @@ bool UDefaultTargetHandler::LineOfSightTrace(const AActor* const Target, const F
 
 bool UDefaultTargetHandler::HandleTargetClearing(EUnlockReasonBitmask UnlockReason)
 {
-	GetLockOn()->ClearTarget();
-
-	if (AutoFindTargetFlags & static_cast<uint8>(UnlockReason))
-	{
-		GetLockOn()->EnableTargeting();
-	}
-
+	GetLockOn()->ClearTargetManual(AutoFindTargetFlags & static_cast<uint8>(UnlockReason));
+	
 	return GetLockOn()->IsTargetLocked();
 }
 

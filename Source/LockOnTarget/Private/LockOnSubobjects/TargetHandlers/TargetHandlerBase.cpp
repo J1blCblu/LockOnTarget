@@ -17,6 +17,7 @@ FTargetInfo UTargetHandlerBase::FindTarget_Implementation()
 bool UTargetHandlerBase::SwitchTarget_Implementation(FTargetInfo& TargetInfo, float PlayerInput)
 {
 	unimplemented();
+	TargetInfo.Reset();
 	return false;
 }
 
