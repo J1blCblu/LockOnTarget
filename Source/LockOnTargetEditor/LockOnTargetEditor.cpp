@@ -4,7 +4,6 @@
 #include "Styling/SlateStyle.h"
 #include "Styling/SlateBrush.h"
 #include "Styling/SlateStyleRegistry.h"
-#include "DetailsCustomization/TargetingHelperComponentDetails.h"
 #include "DetailsCustomization/LockOnComponentDetails.h"
 #include "TargetingHelperComponent.h"
 #include "LockOnTargetComponent.h"
@@ -39,7 +38,6 @@ void FLockOnTargetEditorModule::StartupModule()
 
 	/** Register Details Customization */
 	FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
-	PropertyModule.RegisterCustomClassLayout(UTargetingHelperComponent::StaticClass()->GetFName(), FOnGetDetailCustomizationInstance::CreateStatic(&FTargetingHelperComponentDetails::MakeInstance));
 	PropertyModule.RegisterCustomClassLayout(ULockOnTargetComponent::StaticClass()->GetFName(), FOnGetDetailCustomizationInstance::CreateStatic(&FLockOnComponentDetails::MakeInstance));
 	/** ~Register Details Customization */
 
@@ -64,7 +62,6 @@ void FLockOnTargetEditorModule::ShutdownModule()
 
 	/** UnRegister Details Customization */
 	FPropertyEditorModule& PropertyModule = FModuleManager::GetModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
-	PropertyModule.UnregisterCustomClassLayout(UTargetingHelperComponent::StaticClass()->GetFName());
 	PropertyModule.UnregisterCustomClassLayout(ULockOnTargetComponent::StaticClass()->GetFName());
 	/** ~UnRegister Details Customization */
 
