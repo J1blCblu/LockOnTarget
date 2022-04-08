@@ -15,16 +15,7 @@ TSharedRef<IDetailCustomization> FLockOnComponentDetails::MakeInstance()
 
 void FLockOnComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayout)
 {
-	//TSharedPtr<IPropertyHandle> Property = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(ULockOnTargetComponent, Sockets));
-	//check(Property.IsValid());
-
-	const FText LockOnDescription = LOCTEXT("LockOnDescriptionText", 
-R"(Target should have Targeting Helper Component.
-
-Also note that you may need control yourself next fields:
-+ bOrientRotationToMovement in UCharacterMovementComponent.
-+ bUseControllerRotationYaw in APawn.
-(e.g. via OnTargetLocked/OnTargetUnlocked delegates))");
+	const FText LockOnDescription = LOCTEXT("LockOnDescriptionText", "Target must have TargetingHelperComponent.");
 	
 	IDetailCategoryBuilder& Category = DetailLayout.EditCategory("Description", LOCTEXT("LockOnDescription", "Description"), ECategoryPriority::Important);
 	Category.AddCustomRow(LOCTEXT("DescriptionRow", "DescriptionRow"))
