@@ -13,7 +13,7 @@
 class ULockOnTargetComponent;
 
 /**
- * Base LockOnTargetComponent subobject class.
+ * Base LockOnTargetComponent's subobject class.
  */
 UCLASS(Abstract)
 class LOCKONTARGET_API ULockOnSubobjectBase : public UObject
@@ -29,6 +29,6 @@ public:
 	virtual UWorld* GetWorld() const override;
 
 private:
-	/** Cached LockOnComponent for quick access. */
+	/** Cached LockOnComponent for the quick access. */
 	mutable TWeakObjectPtr<ULockOnTargetComponent> CachedLockOn;
 };

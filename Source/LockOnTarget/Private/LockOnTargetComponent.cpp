@@ -4,6 +4,7 @@
 #include "Camera/PlayerCameraManager.h"
 #include "LockOnSubobjects/RotationModes/RotationModeBase.h"
 #include "LockOnSubobjects/TargetHandlers/TargetHandlerBase.h"
+#include "Net/UnrealNetwork.h"
 #include "TargetingHelperComponent.h"
 #include "TimerManager.h"
 
@@ -15,6 +16,7 @@ ULockOnTargetComponent::ULockOnTargetComponent()
 	, ClampInputVector(-2.f, 2.f)
 	, SwitchDelay(0.3f)
 	, bFreezeInputAfterSwitch(true)
+	, UnfreezeThreshold(1e-2f)
 	, bIsTargetLocked(false)
 	, TargetingDuration(0.f)
 	, InputBuffer(0.f)
@@ -25,9 +27,7 @@ ULockOnTargetComponent::ULockOnTargetComponent()
 	PrimaryComponentTick.bStartWithTickEnabled = false;
 	PrimaryComponentTick.TickGroup = TG_PostUpdateWork;
 
-	//This makes hard reference to Material, which shouldn't be if we don't need decal component at all.
-	/*static ConstructorHelpers::FObjectFinder<UMaterialInterface> MatInst(TEXT("MaterialInstanceConstant'/Attributes/MI_TargetFloor.MI_TargetFloor'"));
-	MatInst.Succeeded() ? DecalMaterial = MatInst.Object : DecalMaterial = nullptr;*/
+	SetIsReplicatedByDefault(true);
 }
 
 void ULockOnTargetComponent::BeginPlay()
@@ -44,7 +44,15 @@ void ULockOnTargetComponent::EndPlay(const EEndPlayReason::Type Reason)
 {
 	Super::EndPlay(Reason);
 
-	ClearTarget();
+	ClearTargetNative();
+}
+
+void ULockOnTargetComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME_CONDITION(ULockOnTargetComponent, Rep_TargetInfo, COND_SkipOwner);
+	DOREPLIFETIME_CONDITION(ULockOnTargetComponent, TargetingDuration, COND_SkipOwner);
 }
 
 /*******************************************************************************************/
@@ -55,7 +63,7 @@ void ULockOnTargetComponent::EnableTargeting()
 {
 	if (IsTargetLocked())
 	{
-		ClearTarget();
+		ClearTargetManual();
 	}
 	else
 	{
@@ -68,7 +76,7 @@ void ULockOnTargetComponent::EnableTargeting()
 
 void ULockOnTargetComponent::SwitchTargetYaw(float YawAxis)
 {
-	if (bCanCaptureTarget && IsTargetLocked() && (GetWorld() && !GetWorld()->GetTimerManager().IsTimerActive(SwitchDelayHandler)))
+	if (bCanCaptureTarget && IsTargetLocked() && GetWorld() && !GetWorld()->GetTimerManager().IsTimerActive(SwitchDelayHandler))
 	{
 		InputVector.X = YawAxis;
 	}
@@ -76,7 +84,7 @@ void ULockOnTargetComponent::SwitchTargetYaw(float YawAxis)
 
 void ULockOnTargetComponent::SwitchTargetPitch(float PitchAxis)
 {
-	if (bCanCaptureTarget && IsTargetLocked() && (GetWorld() && !GetWorld()->GetTimerManager().IsTimerActive(SwitchDelayHandler)))
+	if (bCanCaptureTarget && IsTargetLocked() && GetWorld() && !GetWorld()->GetTimerManager().IsTimerActive(SwitchDelayHandler))
 	{
 		InputVector.Y = PitchAxis;
 	}
@@ -96,26 +104,27 @@ void ULockOnTargetComponent::ProcessAnalogInput()
 		return;
 	}
 
-	FVector2D AnalogInput = MoveTemp(InputVector);
-
-	if (!CanInputBeProcessed(AnalogInput.Size()))
+	if (!CanInputBeProcessed(InputVector.Size()))
 	{
 		return;
 	}
 
-	AnalogInput = AnalogInput.ClampAxes(ClampInputVector.X, ClampInputVector.Y);
-	AnalogInput *= GetWorld()->GetDeltaSeconds();
-	InputBuffer += AnalogInput;
+	InputBuffer += InputVector.ClampAxes(ClampInputVector.X, ClampInputVector.Y) * GetWorld()->GetDeltaSeconds();
 
 	if (InputBuffer.Size() > GetInputBufferThreshold())
 	{
+		float TrigonometricInput = ULOTC_BPLibrary::GetTrigonometricAngle2D(InputBuffer);
+
+		SwitchTarget(TrigonometricInput);
+
+		bInputFrozen = true;
+		ClearInputBuffer();
+
 		if (SwitchDelay > 0.f)
 		{
-			//Timer without callback, because we only need the fact, that timer in progress.
+			//Timer without a callback, 'cause we only need the fact that the timer is in progress.
 			TimerManager.SetTimer(SwitchDelayHandler, SwitchDelay, false);
 		}
-
-		float TrigonometricInput = ULOTC_BPLibrary::GetTrigonometricAngle2D(InputBuffer);
 
 #if WITH_EDITORONLY_DATA
 		if (bShowPlayerInput)
@@ -123,10 +132,6 @@ void ULockOnTargetComponent::ProcessAnalogInput()
 			GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Black, FString::Printf(TEXT("PlayerInput: %.2f deg."), TrigonometricInput), true, FVector2D(1.15f));
 		}
 #endif
-
-		SwitchTarget(TrigonometricInput);
-		bInputFrozen = true;
-		InputBuffer = {0.f, 0.f};
 	}
 	else
 	{
@@ -143,7 +148,7 @@ bool ULockOnTargetComponent::CanInputBeProcessed(float PlayerInput) const
 {
 	if (bFreezeInputAfterSwitch)
 	{
-		bool bInputIsEmpty = FMath::IsNearlyZero(PlayerInput, 0.01f);
+		bool bInputIsEmpty = FMath::IsNearlyZero(PlayerInput, UnfreezeThreshold);
 
 		if (bInputFrozen)
 		{
@@ -178,12 +183,12 @@ void ULockOnTargetComponent::FindTarget()
 		TRACE_BOOKMARK(TEXT("LOC_PerformFindTarget"));
 		SCOPED_NAMED_EVENT(LOC_TargetFinding, FColor::Red);
 #endif
-
+		
 		FTargetInfo NewTargetInfo = TargetHandlerImplementation->FindTarget();
 
 		if (IsValid(NewTargetInfo.HelperComponent))
 		{
-			SetLockOnTargetNative(NewTargetInfo);
+			UpdateTargetInfo(NewTargetInfo);
 		}
 		else
 		{
@@ -200,21 +205,12 @@ bool ULockOnTargetComponent::SwitchTarget(float PlayerInput)
 		TRACE_BOOKMARK(TEXT("LOC_PerformSwitchTarget"));
 		SCOPED_NAMED_EVENT(LOC_SwitchingTarget, FColor::Red);
 #endif
-		
+
 		FTargetInfo NewTargetInfo;
 
-		if (TargetHandlerImplementation->SwitchTarget(NewTargetInfo, PlayerInput))
+		if (TargetHandlerImplementation->SwitchTarget(NewTargetInfo, PlayerInput) && IsValid(NewTargetInfo.HelperComponent))
 		{
-			if (NewTargetInfo.HelperComponent == GetHelperComponent())
-			{
-				UpdateTargetSocket(NewTargetInfo.SocketForCapturing);
-			}
-			else
-			{
-				ClearTarget();
-				SetLockOnTargetNative(NewTargetInfo);
-			}
-
+			UpdateTargetInfo(NewTargetInfo);
 			return true;
 		}
 		else
@@ -226,85 +222,147 @@ bool ULockOnTargetComponent::SwitchTarget(float PlayerInput)
 	return false;
 }
 
+bool ULockOnTargetComponent::CanContinueTargeting() const
+{
+	if (GetOwner())
+	{
+		if(IsOwnerLocallyControlled())
+		{
+			//Only the locally controlled component checks all conditions.
+			return IsValid(TargetHandlerImplementation) && TargetHandlerImplementation->CanContinueTargeting();
+		}
+		else
+		{
+			//Server and SimulatedProxies just check the pointer's validity to avoid crashes.
+			return IsValid(GetTarget());
+		}
+	}
+
+	return false;
+}
+
+/*******************************************************************************************/
+/*******************************  Manual Handling  *****************************************/
+/*******************************************************************************************/
+
+void ULockOnTargetComponent::SetLockOnTargetManual(AActor* NewTarget, const FName& Socket)
+{
+	if (bCanCaptureTarget)
+	{
+		if (IsValid(NewTarget) && NewTarget != GetOwner())
+		{
+			UTargetingHelperComponent* NewTargetHelperComponent = NewTarget->FindComponentByClass<UTargetingHelperComponent>();
+
+			if (IsValid(NewTargetHelperComponent) && NewTargetHelperComponent->CanBeTargeted(this))
+			{
+				UpdateTargetInfo({NewTargetHelperComponent, Socket});
+			}
+		}
+	}
+}
+
 bool ULockOnTargetComponent::SwitchTargetManual(float TrigonometricInput)
 {
 	return bCanCaptureTarget && IsTargetLocked() && SwitchTarget(TrigonometricInput);
+}
+
+void ULockOnTargetComponent::ClearTargetManual(bool bAutoFindNewTarget)
+{
+	if (IsTargetLocked())
+	{
+		UpdateTargetInfo({nullptr, NAME_None});
+
+		if(bAutoFindNewTarget)
+		{
+			EnableTargeting();
+		}
+	}
 }
 
 /*******************************************************************************************/
 /*******************************  Directly Lock On System  *********************************/
 /*******************************************************************************************/
 
-void ULockOnTargetComponent::SetLockOnTarget(AActor* NewTarget, const FName& Socket)
+void ULockOnTargetComponent::UpdateTargetInfo(const FTargetInfo& TargetInfo)
 {
-	if (!bCanCaptureTarget)
-	{
-		return;
-	}
+	//Update the Target locally.
+	Rep_TargetInfo = TargetInfo;
+	OnTargetInfoUpdated();
 
-	if (IsTargetLocked())
+	//Update the Target on the server.
+	if(GetOwner()->GetNetMode() != NM_Standalone)
 	{
-		ClearTarget();
-	}
-
-	if (IsValid(NewTarget))
-	{
-		UTargetingHelperComponent* NewTargetHelperComponent = NewTarget->FindComponentByClass<UTargetingHelperComponent>();
-
-		if (IsValid(NewTargetHelperComponent) && NewTargetHelperComponent->CanBeTargeted(this))
-		{
-			SetLockOnTargetNative({NewTargetHelperComponent, Socket});
-		}
+		Server_UpdateTargetInfo(TargetInfo);
 	}
 }
 
-void ULockOnTargetComponent::SetLockOnTargetNative(const FTargetInfo& TargetInfo)
+void ULockOnTargetComponent::Server_UpdateTargetInfo_Implementation(const FTargetInfo& TargetInfo)
+{
+	if (TargetInfo.GetActor() != GetOwner())
+	{
+		Rep_TargetInfo = TargetInfo;
+		OnTargetInfoUpdated();
+	}
+}
+
+void ULockOnTargetComponent::OnTargetInfoUpdated()
+{
+	if (IsValid(Rep_TargetInfo.HelperComponent))
+	{
+		if (IsTargetLocked())
+		{
+			if (Rep_TargetInfo.HelperComponent == GetHelperComponent())
+			{
+				//If locked and received the same HelperComponent then change the socket.
+				if (Rep_TargetInfo.SocketForCapturing != GetCapturedSocket())
+				{
+					UpdateTargetSocket();
+				}
+			}
+			else
+			{
+				//If locked and received another HelperComponent then switch to the new Target.
+				ClearTargetNative();
+				SetLockOnTargetNative();
+			}
+		}
+		else
+		{
+			//If not locked then capture the new Target.
+			SetLockOnTargetNative();
+		}
+	}
+	else
+	{
+		//If HelperComponent is invalid clear the Target.
+		ClearTargetNative();
+	}
+}
+
+void ULockOnTargetComponent::SetLockOnTargetNative()
 {
 #if LOC_INSIGHTS
 	SCOPED_NAMED_EVENT(LOC_SetLock, FColor::Emerald);
+	TRACE_BOOKMARK(TEXT("Target Locked: %s"), *GetNameSafe(Rep_TargetInfo.GetActor()));
 #endif
 
-	UTargetingHelperComponent* TargetHelpComp = TargetInfo.HelperComponent;
+	PrivateTargetInfo = Rep_TargetInfo;
+	bIsTargetLocked = true;
+	
+	//Notify TargetingHelperComponent.
+	GetHelperComponent()->CaptureTarget(this, GetCapturedSocket());
+	
+	//Notify TargetHadler that the Target is captured.
+	TargetHandlerImplementation->OnTargetLockedNative();
+	OnTargetLocked.Broadcast(GetTarget());
 
-	if (IsValid(TargetHelpComp) && TargetHelpComp != GetHelperComponent() && TargetHelpComp->GetOwner() != GetOwner())
+	if (bDisableTickWhileUnlocked)
 	{
-		PrivateTargetInfo = TargetInfo;
-
-		SetupHelperComponent();
-		bIsTargetLocked = true;
-		OnTargetLocked.Broadcast(GetTarget());
-		TargetHandlerImplementation->OnTargetLockedNative(); //Maybe bind to OnTargetLocked in HandlerBase.
-
-		if (bDisableTickWhileUnlocked)
-		{
-			SetComponentTickEnabled(true);
-		}
-
-#if LOC_INSIGHTS
-		TRACE_BOOKMARK(TEXT("Target Locked: %s"), *GetNameSafe(GetTarget()));
-#endif
+		SetComponentTickEnabled(true);
 	}
 }
 
-void ULockOnTargetComponent::SetupHelperComponent()
-{
-	GetHelperComponent()->CaptureTarget(this, GetCapturedSocket());
-
-	TWeakObjectPtr<ULockOnTargetComponent> ThisComp = this;
-	TargetUnlockDelegateHandle = GetHelperComponent()->OnInvadersUnlock.AddLambda(
-		[ThisComp](bool bUnlockAll, ULockOnTargetComponent* Invader)
-		{
-			if (ThisComp.IsValid())
-			{
-				if (bUnlockAll || Invader == ThisComp)
-				{
-					ThisComp->ClearTarget();
-				}
-			}
-		});
-}
-
-void ULockOnTargetComponent::ClearTarget()
+void ULockOnTargetComponent::ClearTargetNative()
 {
 	if (IsTargetLocked())
 	{
@@ -318,33 +376,31 @@ void ULockOnTargetComponent::ClearTarget()
 			SetComponentTickEnabled(false);
 		}
 
-		TargetingDuration = 0.f;
-		OnTargetUnlocked.Broadcast(GetTarget());
-		TargetHandlerImplementation->OnTargetUnlockedNative();
-
+		//Notify TargetingHelperComponent.
 		if (IsValid(GetHelperComponent()))
 		{
 			GetHelperComponent()->ReleaseTarget(this);
-			GetHelperComponent()->OnInvadersUnlock.Remove(TargetUnlockDelegateHandle);
 		}
 
+		TargetingDuration = 0.f;
 		bIsTargetLocked = false;
 		PrivateTargetInfo.Reset();
+
+		//Notify TargetHandler that the Target is released.
+		TargetHandlerImplementation->OnTargetUnlockedNative();
+		OnTargetUnlocked.Broadcast(GetTarget());
 	}
 }
 
-void ULockOnTargetComponent::UpdateTargetSocket(const FName& NewSocket)
+void ULockOnTargetComponent::UpdateTargetSocket()
 {
 #if LOC_INSIGHTS
-	TRACE_BOOKMARK(TEXT("LOC_SocketChanged %s"), *NewSocket.ToString());
+	TRACE_BOOKMARK(TEXT("LOC_SocketChanged %s"), *Rep_TargetInfo.SocketForCapturing.ToString());
 	SCOPED_NAMED_EVENT(LOC_SocketChanged, FColor::Yellow);
 #endif
 
-	if (NewSocket != GetCapturedSocket())
-	{
-		PrivateTargetInfo.SocketForCapturing = NewSocket;
-		GetHelperComponent()->UpdateWidget(NewSocket);
-	}
+	PrivateTargetInfo.SocketForCapturing = Rep_TargetInfo.SocketForCapturing;
+	GetHelperComponent()->UpdateWidget(GetCapturedSocket(), this);
 }
 
 /*******************************************************************************************/
@@ -359,27 +415,39 @@ void ULockOnTargetComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	SCOPED_NAMED_EVENT(LOC_Tick, FColor::Orange);
 #endif
 
-	if (IsTargetLocked() && IsValid(TargetHandlerImplementation) && TargetHandlerImplementation->CanContinueTargeting())
+	if (IsTargetLocked() && CanContinueTargeting())
 	{
-		TargetingDuration += DeltaTime;
-
-		ProcessAnalogInput();
+		if (GetOwner()->HasAuthority() || IsOwnerLocallyControlled())
+		{
+			TargetingDuration += DeltaTime;
+		}
 
 		const FVector FocusLocation = GetCapturedLocation(true);
-		TickControlRotationCalc(DeltaTime, FocusLocation);
-		TickOwnerRotationCalc(DeltaTime, FocusLocation);
+
+		if (IsOwnerLocallyControlled())
+		{
+			//Process the input only for the locally controlled Owner.
+			ProcessAnalogInput();
+
+			//Update the ControlRotation locally and it'll be replicated to the server via CMC.
+			TickControlRotationCalc(DeltaTime, FocusLocation);
 
 #if WITH_EDITORONLY_DATA
-		DebugOnTick();
+			DebugOnTick();
 #endif
+		}
+
+		//Update on the Client and the Server simultaneously.
+		//TODO: server check as in CMC.
+		TickOwnerRotationCalc(DeltaTime, FocusLocation);
 	}
 }
 
 void ULockOnTargetComponent::TickControlRotationCalc(float DeltaTime, const FVector& TargetLocation)
 {
-	if (IsValid(ControlRotationModeConfig)&& ControlRotationModeConfig->IsEnabled() && GetController())
+	if (IsValid(ControlRotationModeConfig) && ControlRotationModeConfig->bIsEnabled)
 	{
-		AController* const Controller = GetController();
+		AController* Controller = GetController();
 		const FRotator& ControlRotation = Controller->GetControlRotation();
 		const FVector LocationFrom = GetCameraLocation();
 		const FRotator NewRotation = ControlRotationModeConfig->GetRotation(ControlRotation, LocationFrom, TargetLocation, DeltaTime);
@@ -389,7 +457,7 @@ void ULockOnTargetComponent::TickControlRotationCalc(float DeltaTime, const FVec
 
 void ULockOnTargetComponent::TickOwnerRotationCalc(float DeltaTime, const FVector& TargetLocation)
 {
-	if (IsValid(OwnerRotationModeConfig) && OwnerRotationModeConfig->IsEnabled() && GetOwner())
+	if (IsValid(OwnerRotationModeConfig) && OwnerRotationModeConfig->bIsEnabled && GetOwner())
 	{
 		const FVector LocationFrom = GetOwnerLocation();
 		const FRotator& CurrentRotation = GetOwnerRotation();
@@ -413,7 +481,7 @@ FVector ULockOnTargetComponent::GetCapturedLocation(bool bWithOffset) const
 
 	if (IsTargetLocked())
 	{
-		TargetedLocation = GetHelperComponent()->GetSocketLocation(GetCapturedSocket(), bWithOffset, const_cast<ULockOnTargetComponent*>(this));
+		TargetedLocation = GetHelperComponent()->GetSocketLocation(GetCapturedSocket(), bWithOffset, this);
 	}
 
 	return TargetedLocation;
@@ -422,6 +490,13 @@ FVector ULockOnTargetComponent::GetCapturedLocation(bool bWithOffset) const
 AController* ULockOnTargetComponent::GetController() const
 {
 	return GetOwner() ? GetOwner()->GetInstigatorController() : nullptr;
+}
+
+bool ULockOnTargetComponent::IsOwnerLocallyControlled() const
+{
+	AController* Controller = GetController();
+
+	return IsValid(Controller) && Controller->IsLocalController();
 }
 
 APlayerController* ULockOnTargetComponent::GetPlayerController() const
@@ -475,14 +550,6 @@ FVector ULockOnTargetComponent::GetCameraForwardVector() const
 
 #if WITH_EDITORONLY_DATA
 
-void ULockOnTargetComponent::PostEditChangeProperty(struct FPropertyChangedEvent& Event)
-{
-	Super::PostEditChangeProperty(Event);
-
-	//const FName PropertyName = Event.GetPropertyName();
-	//const FName MemberPropertyName = Event.MemberProperty->GetFName();
-}
-
 void ULockOnTargetComponent::DebugOnTick() const
 {
 	if (bShowTargetInfo)
@@ -494,12 +561,12 @@ void ULockOnTargetComponent::DebugOnTick() const
 		{
 			if (Invader)
 			{
-				InvadersName.Append(FString::Printf(TEXT("\n %s"), *GetNameSafe(Invader->GetOwner())));
+				InvadersName.Append(FString::Printf(TEXT("%s, "), *GetNameSafe(Invader->GetOwner())));
 			}
 		}
 
-		GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("Target Invaders amount: %i \nInvaders: %s\nSockets Amount: %i"), GetHelperComponent()->GetInvaders().Num(), *InvadersName, GetHelperComponent()->Sockets.Num()), true, FVector2D(1.1f));
-		GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("ControlRotationMode: %s and OwnerRotationMode: %s"), *GetNameSafe(ControlRotationModeConfig), *GetNameSafe(OwnerRotationModeConfig)), true, FVector2D(1.1f));
+		GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("\nTarget Invaders amount: %i \nInvaders: [%s]"), GetHelperComponent()->GetInvaders().Num(), *InvadersName), true, FVector2D(1.1f));
+		GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("\nControlRotationMode: %s \nOwnerRotationMode: %s"), *GetNameSafe(ControlRotationModeConfig), *GetNameSafe(OwnerRotationModeConfig)), true, FVector2D(1.1f));
 
 		if (bFreezeInputAfterSwitch)
 		{
@@ -507,7 +574,7 @@ void ULockOnTargetComponent::DebugOnTick() const
 		}
 
 		GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("Input Buffer ratio = %.3f / %.3f InputVector2D: X %.3f, Y %.3f "), InputBuffer.Size(), GetInputBufferThreshold(), InputBuffer.X, InputBuffer.Y), true, FVector2D(1.1f));
-		GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("\n\n\nTarget: %s \nDuration: %.2f \nCapturedSocket: %s"), *GetNameSafe(GetTarget()), GetTargetingDuration(), *PrivateTargetInfo.SocketForCapturing.ToString()), true, FVector2D(1.15f));
+		GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("\n\nTarget: %s \nCapturedSocket: %s \nSockets Amount: %i\nDuration: %.2f "), *GetNameSafe(GetTarget()), *PrivateTargetInfo.SocketForCapturing.ToString(), GetHelperComponent()->Sockets.Num(), GetTargetingDuration()), true, FVector2D(1.15f));
 	}
 }
 

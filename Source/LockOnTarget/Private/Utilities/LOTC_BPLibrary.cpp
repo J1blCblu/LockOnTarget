@@ -148,7 +148,7 @@ bool ULOTC_BPLibrary::IsVectorOnScreen(APlayerController* PC, const FVector& Wor
 	return false;
 }
 
-float ULOTC_BPLibrary::GetAngle(const FVector& Btw1, const FVector& Btw2)
+float ULOTC_BPLibrary::GetAngleDeg(const FVector& Btw1, const FVector& Btw2)
 {
 	return (180.f) / PI * FMath::Acos(Btw1.GetSafeNormal() | Btw2.GetSafeNormal());
 }
@@ -175,7 +175,7 @@ float ULOTC_BPLibrary::GetTrigonometricAngle3D(const FVector& Target, const FVec
 
 	const FVector ProjectedPoint = FVector::PointPlaneProject(Target, OriginPointOnPlane, ForwardVector);
 	const FVector DirVect = (ProjectedPoint - OriginPointOnPlane).GetSafeNormal();
-	float Angle = GetAngle(RightVector, DirVect);
+	float Angle = GetAngleDeg(RightVector, DirVect);
 
 	if ((UpVector | DirVect) <= 0)
 	{

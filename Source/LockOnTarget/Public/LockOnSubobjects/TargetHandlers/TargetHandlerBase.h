@@ -8,10 +8,10 @@
 struct FTargetInfo;
 
 /**
- * LockOnTargetComponent' subobject abstract class which handle Target.
- * Responsible for finding, switching and maintaining Target.
+ * LockOnTargetComponent's subobject abstract class which is used to handle the Target.
+ * Responsible for finding, switching and maintaining the Target.
  * 
- * Should override FindTarget(), SwitchTarget(), CanContinueTargeting().
+ * FindTarget(), SwitchTarget(), CanContinueTargeting() should be overridden.
  */
 UCLASS(Blueprintable, ClassGroup = (LockOnTarget), Abstract, DefaultToInstanced, EditInlineNew)
 class LOCKONTARGET_API UTargetHandlerBase : public ULockOnSubobjectBase
@@ -23,38 +23,40 @@ public:
 	friend ULockOnTargetComponent;
 
 	/**
-	 * Find new Target for Capturing.
-	 * Should return valid HelperComponent with Socket.
+	 * Used to find a new Target.
+	 * Should return a valid HelperComponent with a Socket.
+	 * 
+	 * (You can get the TargetingHelperComponent via GetLockOn()->GetHelperComponent()).
 	 *
-	 * @return - New Target information(HelperComponent and Socket).
+	 * @return - New Target information (TargetingHelperComponent and Socket).
 	 */
 	UFUNCTION(BlueprintNativeEvent)
 	FTargetInfo FindTarget();
 	
 	/**
-	 * Perform switch Target.
-	 * For switching to new Target use new HelperComponent and Socket.
-	 * For switching Socket in current Target, set current HelperComponent and new Socket.
+	 * Used to switch a Target.
+	 * Provide a new HelperComponent and a socket to switch to the new Target . 
+	 * Provide the captured HelperComponent and a new Socket to switch the socket on the current Target.
 	 * 
-	 * (You can get HelperComponent via GetLockOn()->GetHelperComponent()).
+	 * (You can get the TargetingHelperComponent via GetLockOn()->GetHelperComponent()).
 	 * 
-	 * @param TargetInfo - out	New Target info(New Target with socket or new socket for current Target).
-	 * @param PlayerInput - Player input in trigonometric deg(0.f, 160.f).
-	 * @return - is switching successful(Target found or new socket) otherwise should be false.
+	 * @param TargetInfo - out	New Target info (new TargetingHelperComponent with a socket or a new socket for the current Target).
+	 * @param PlayerInput - Player input in the trigonometric deg(0.f, 180.f).
+	 * @return - was switch successful (a new Target or a new socket) otherwise should be false.
 	 */
 	UFUNCTION(BlueprintNativeEvent)
 	bool SwitchTarget(FTargetInfo& TargetInfo, float PlayerInput);
 
-	/** Is Target can be locked until next update. */
+	/** Can the Target be locked until the next update. */
 	UFUNCTION(BlueprintNativeEvent)
 	bool CanContinueTargeting();
 
 protected:
-	/** Called when Lock On Component successfully locked Target. */
+	/** Called when the LockOnTargetComponent successfully locked the Target. */
 	UFUNCTION(BlueprintImplementableEvent, meta = (BlueprintProtected))
 	void OnTargetLocked();
 
-	/** Called when Lock On Component successfully unlocked Target. */
+	/** Called when the LockOnTargetComponent successfully unlocked the Target. */
 	UFUNCTION(BlueprintImplementableEvent, meta = (BlueprintProtected))
 	void OnTargetUnlocked();
 
@@ -62,9 +64,9 @@ protected:
 /*******************************  Native   *************************************************/
 /*******************************************************************************************/
 private:
-	/** Only should be called from LockOnComponent. */
+	/** Only should be called from the LockOnTargetComponent. */
 	virtual void OnTargetLockedNative();
 
-	/** Only should be called from LockOnComponent. */
+	/** Only should be called from the LockOnTargetComponent. */
 	virtual void OnTargetUnlockedNative();
 };

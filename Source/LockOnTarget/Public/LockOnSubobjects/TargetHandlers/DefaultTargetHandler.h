@@ -11,10 +11,10 @@ class ULockOnTargetComponent;
 class UTargetingHelperComponent;
 
 /**
- * Native default implementation of TargetHandler based on calculation and comparison of the Targets modifiers.
- * Best Target will have least modifier.
+ * Native default implementation of TargetHandler based on calculation and comparison of Targets modifiers.
+ * The best Target will have least modifier.
  * 
- * You can override CalculateTargetModifier() for custom sorting set of Targets.
+ * You can override CalculateTargetModifier() to custom sort a set of Targets.
  * @see UTargetHandlerBase.
  */
 UCLASS(Blueprintable, ClassGroup = (LockOnTarget))
@@ -27,119 +27,131 @@ public:
 
 public:
 	/** 
-	 * Auto find Target on failing checked flags.
-	 * If proper flag set then trying find new Target.
-	 * i.e. if only checked TargetInvalidation then after Target Destroying will trying find new Target. 
-	 * If Target goes out of LostDistance then auto Finding new Target will not be triggered.
+	 * Auto find a new Target after a certain flag fails.
+	 * If proper flag is set, try to find a new Target.
+	 * i.e. if the 'TargetInvalidation' flag is only set then it will try to find a new Target after the Target destruction. 
+	 * If the Target went out of LostDistance then it won't try to find a new Target.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (BitMask, BitmaskEnum = "EUnlockReasonBitmask"))
 	uint8 AutoFindTargetFlags;
 
-	/** Capture Target that only on screen. */
+	/** Capture a Target that is only on the screen. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings")
 	bool bScreenCapture;
 
 	/**
-	 * Narrows the screen borders(x and y) from both sides as a percentage when finding new Target. 
-	 * Useful for not capturing Target near screen border. 
+	 * Narrows the screen borders(x and y) from the both sides by a percentage when trying to find a new Target.
+	 * Useful for not capturing a Target near the screen borders. 
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (EditCondition = "bScreenCapture"))
 	FVector2D FindingScreenOffset;
 
 	/**
-	 * Narrows the screen borders(x and y) from both sides as a percentage when switching Target. 
-	 * Useful for not capturing Target near screen border. 
+	 * Narrows the screen borders(x and y) from the both sides by a percentage when trying to switch the Target. 
+	 * Useful for not capturing a Target near screen borders. 
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (EditCondition = "bScreenCapture"))
 	FVector2D SwitchingScreenOffset;
 
-	/** Angle to Target relative to the forward vector of the camera(if not exists owner Actor). */
+	/** Angle to Target relative to the forward vector of the camera. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f, EditCondition = "!bScreenCapture"))
 	float CaptureAngle;
 
-	/** Should modifier use Distance to Target or Default modifier = 1000.f. */
+	/** Should modifier use a distance to the Target or a default modifier = 1000.f. */
 	UPROPERTY(EditAnywhere, Category = "Default Solver")
 	bool bCalculateDistance;
 
 	/**
-	 * Default Solver that calculate Target modifier. (Target with less modifier will be captured as the result).
-	 * With CalculateTargetModifier override without calling parent Method will have no Affect.
+	 * The Default Solver that calculates the Target modifier. (The target with the smallest modifier will be captured as a result).
+	 * Overriding the CalculateTargetModifier() method without calling the parent method will have no effect.
 	 * 
-	 * Angle weight determines the effect of angle between captured Target's socket and screen center(basically, without camera rotation clamping) modifier while finding best Target.
-	 * i.e. smaller value will reduce Angle affect on the resulted modifier and increase Distance weight to Target.
+	 * Angle Weight determines the impact of the angle modifier between the vector to the Target socket and the camera forward vector (basically without camera rotation clamping) while finding the best Target.
+	 * i.e. a smaller value will reduce the angle impact on the resulting modifier and will increase the impact of the distance weight to the Target.
 	 * 
-	 * For finding closest Target this value should be 0.f. 
+	 * To find the closest Target this value should be 0.f. 
 	 */
 	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f))
 	float AngleWeightWhileFinding;
 
 	/**
-	 * Default Solver that calculate Target modifier. (Target with less modifier will be captured as the result).
-	 * With CalculateTargetModifier override without calling parent Method will have no Affect.
+	 * The Default Solver that calculates the Target modifier. (The target with the smallest modifier will be captured as a result).
+	 * Overriding the CalculateTargetModifier() method without calling the parent method will have no effect.
 	 * 
-	 * While switching this Angle will be between CapturedTarget and Candidate to be new Target.
-	 * i.e. smaller value will reduce Angle affect on the resulted modifier and increase Distance weight to Target.
+	 * Angle Weight determines the impact of the angle modifier between the vector to the Target socket and the vector to the captured Target socket while switching to a new Target.
+	 * i.e. a smaller value will reduce the angle impact on the resulting modifier and will increase the impact of the distance weight to the Target.
 	 * 
-	 * For finding closest Target this value should be 0.f. 
+	 * To find the closest Target this value should be 0.f.
 	 */
 	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f))
 	float AngleWeightWhileSwitching;
 
 	/** 
-	 * Default Solver that calculate Target modifier. (Target with less modifier will be captured as the result).
-	 * With CalculateTargetModifier override without calling parent Method will have no Affect.
+	 * The Default Solver that calculates the Target modifier. (The target with the smallest modifier will be captured as a result).
+	 * Overriding the CalculateTargetModifier() method without calling the parent method will have no effect.
 	 * 
-	 * Only have affect while switching. 
-	 * This parameter increase influence of player input switch direction.
-	 * Better Targets will be closest to this trigonometric angle(of player input).
-	 * i.e. moving up(x = 0, y = 1) analog input will be converted to trigonometric angle 90deg.
+	 * Only have affect when switching to a new Target.
+	 * This parameter will increase the impact of the player's input direction.
+	 * The best Target will be the closest one to the trigonometric angle (the player input direction).
+	 * i.e. moving the mouse/stick up(x = 0, y = 1) the analog input will be converted to the trigonometric angle 90deg.
 	 */
 	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f))
 	float TrigonometricInputWeight;
 
-	/** Maybe useful for Capturing Target not closest to screen center. Measured in degrees. */
+	/** 
+	 * Rotate the camera forward vector (== screen center) in the Angle calculations. 
+	 * May be useful for finding the closest Target to the rotated camera forward vector. 
+	 * 
+	 * |2 2 2 2 2|-->|2 1 0 1 2|
+	 * |2 1 1 1 2|-->|2 1 1 1 2|
+	 * |2 1 0 1 2|-->|2 2 2 2 2|
+	 * |2 1 1 1 2|-->|3 3 3 3 3|
+	 * |2 2 2 2 2|-->|4 4 4 4 4|
+	 * 
+	 * On the picture the CameraRotationOffsetForCalculations pitch value is changed => The Best Target(0) is now higher on the screen.
+	 */
+
 	UPROPERTY(EditAnywhere, Category = "Default Solver|Advanced")
-	FVector2D ScreenCenterOffsetWhileFinding = FVector2D(0.f, 0.f);
+	FRotator CameraRotationOffsetForCalculations;
 
 	/** 
-	 * The Targets in this range will be processed.
-	 * Trigonometric Angle added to both side of player analog input direction.
-	 * Player input converts to 2D space vector with direction value of player Analog input.
-	 * Trigonometric Angle calculates from screen right X axis (x = 1, y = 0) and player Analog input.
+	 * Targets in this range will be processed.
+	 * The TrigonometricAngleRange is added to both sides of the player analog input direction.
+	 * The Player input is converted to a 2D space direction.
+	 * The trigonometric Angle is calculated from the screen right X axis (x = 1, y = 0) and the player input direction.
 	 * 
-	 * i.e. player Analog input = 90deg = (x = 0, y = 1) and this value = 30deg.
-	 * Then Capturing target range(from, to) will be [60 , 120] => 60deg.
-	 * Any Target off this trigonometric range [60, 120] i.e. down side off screen (270deg)
-	 * can't be captured and Target modifier will not be calculated for it.
+	 * i.e. player Analog input = 90deg = (x = 0, y = 1) and this value = 30deg,
+	 * then the capturing trigonometric range(from, to) will be [60 , 120] => 60deg.
+	 * Any Target outside this trigonometric range [60, 120] i.e. down side off the screen (270deg)
+	 * can't be captured and the Target modifier won't be calculated for it.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f))
 	float TrigonometricAngleRange;
 
 	/**
-	 * Does Target should be Traced before capturing it.
-	 * While Target locked checks successful trace to it.
-	 * If Target while Targeting out of Line Of Sight the timer begins work.
-	 * Target may return to Line Of Sight and stop timer.
-	 * After timer finished Target will be unlocked.
+	 * Does a Target should be traced before capturing it.
+	 * While the Target is locked, checks for a successful trace to it.
+	 * If the captured Target is out of the Line Of Sight, the timer begins working.
+	 * The Target may return to the Line Of Sight and stop the timer.
+	 * The Target will be unlocked after the timer expires.
 	 */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Line Of Sight")
 	bool bLineOfSightCheck;
 
-	/** Object channel for tracing. If trace hit something then Line of Sight fails. Target and Owner will be ignored. */
+	/** Object channels for the trace. If trace hits something then the Line of Sight fails. Target and Owner will be ignored. */
 	UPROPERTY(EditDefaultsOnly, Category = "Line Of Sight", meta = (EditCondition = "bLineOfSightCheck"))
 	TArray<TEnumAsByte<ECollisionChannel>> TraceObjectChannels;
 
 	/** 
-	 * The timer Delay after which the Target will be unlocked. 
-	 * Timer stops if Target returns to Line Of Sight.
-	 * If < 0.f will never unlock Target. This means Line of Sight used only for finding Target.
+	 * Timer Delay after which the Target will be unlocked. 
+	 * Timer stops if the Target returns to the Line Of Sight.
+	 * If <= 0.f, the Target won't be unlocked. This means the Line of Sight is used only to find the Target.
 	 */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Line Of Sight", meta = (EditCondition = "bLineOfSightCheck"))
 	float LostTargetDelay;
 
 #if WITH_EDITORONLY_DATA
 
-	/** Display Target temporary modifier for debugging while calculation. */
+	/** Display a Target temporary modifier for debugging. */
 	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (Bitmask, BitmaskEnum = "EDebugFlags"))
 	bool bDisplayModifier = false;
 
@@ -159,16 +171,16 @@ public:
 
 protected:
 	/**
-	 * Use for find Best Target from sorted Targets.
+	 * Used to find the best Target from the sorted Targets.
 	 * Can be overridden via BP.
 	 * 
-	 * Best Target = Modifier -> 0. (Clossest to zero)
-	 * If player input doesn't exist then it value < 0.f(when not switching).
+	 * The best Target = modifier -> 0. (The clossest to zero)
+	 * If the player input doesn't exist then its value < 0.f (when not switching).
 	 * 
 	 * @param Location - Target's socket location.
-	 * @param TargetHelperComponent - HelperComponent for useful info.
-	 * @param PlayerInput - Player trigonometric input(0, 360). If >= 0 then player perform Switch Target/socket.
-	 * @return - Target modifier which should be > 0.f.
+	 * @param TargetHelperComponent - HelperComponent is used to provide an useful info.
+	 * @param PlayerInput - Player trigonometric input(0, 360). If >= 0 then the player performs to switch the Target/socket.
+	 * @return - Target modifier should be > 0.f.
 	 */
 	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget")
 	float CalculateTargetModifier(const FVector& Location, UTargetingHelperComponent* TargetHelperComponent, float PlayerInput) const;
@@ -190,30 +202,32 @@ public:
 private:
 	/** Finding target */
 	FTargetInfo FindTargetNative(float PlayerInput = -1.f) const;
-	bool IsTargetable(UTargetingHelperComponent* HelpComp) const;
+	virtual bool IsTargetable(UTargetingHelperComponent* HelpComp) const;
 	bool IsSocketValid(const FName& Socket, UTargetingHelperComponent* HelperComponent, float PlayerInput, const FVector& SocketLocation) const;
 
 	bool SwitchTargetNative(FTargetInfo& TargetInfo, float PlayerInput) const;
 	TPair<FName, float> TrySwitchSocket(float PlayerInput) const;
 	/** ~Finding target */
 
+private:
 	/** Line Of Sight handling */
 	FTimerHandle LOSDelayHandler;
-	void StartLineOfSightTimer();
-	void StopLineOfSightTimer();
-	void OnLineOfSightFail();
+	virtual void StartLineOfSightTimer();
+	virtual void StopLineOfSightTimer();
+	virtual void OnLineOfSightFail();
 	bool LineOfSightTrace(const AActor* const Target, const FVector& Location) const;
 	/** ~Line Of Sight handling */
 
+private:
 	/** Helpers methods */
 	bool HandleTargetClearing(EUnlockReasonBitmask UnlockReason);
 	/** ~Helpers methods */
 
 /*******************************************************************************************/
-/******************************* Debug and Editor Only  ************************************/
+/******************************* Debug and Editor Only *************************************/
 /*******************************************************************************************/
 #if WITH_EDITORONLY_DATA
-protected:
+private:
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& Event);
 #endif
 };
