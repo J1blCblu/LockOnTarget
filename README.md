@@ -1,35 +1,33 @@
 # LockOnTarget
-Fast and Efficient plugin for Unreal Engine which gives the ability to capture the Target and follow it.  \
-System consist of 2 components which can be extendent and customized in different ways via C++/BP.
+Fast and Efficient plugin for Unreal Engine which gives the ability to capture the Target and follow it.  
+The system consist of 2 components which can be extendent and customized in different ways via C++/BP.
 
 ### **LockOnTargetComponent**
-**Main component** which capture `Targeting Helper Component` and wraps the following systems:
-  * Target storage (Helper Component and Socket).
-  * Processing input.
-  * Delegating other work to it subobjects:
-    * **TargetHandler** - used for handle Target(find, switch, maintenance).
-    * **RotationModes** - return final rotation for Control/Owner Rotation.
+LockOnTargetComponent is a wrapper over the next systems:
+ *	Target storage (*TargetingHelperComponent* and *Socket*). Synchronized with the server.
+ *	Processing the input. Processed locally.
+ *	**TargetHandler** subobject - used for Target handling (find, switch, maintenance). Processed locally.
+ *	**RotationMode** subobject - used to get the rotation for the Control/Owner rotation. Mostly processed locally.
 
 ### **TargetingHelperComponent**
-Captured by `LockOnTarget component`. Target specific storage and useful methods, delegates for it owner.
+Used by the *LockOnTargetComponent* to capture and provide specific information about the Target.
 
 # Features
 
- * Targeting to `any AActor subclass`. Adding and removing Helper component from any Actor at runtime.
- * Target can have `multiple sockets`, which can be added/removed at runtime.
+ * Capture *any Actor* with a *TargetingHelperComponent* which can be removed and added at runtime.
+ * Target can have **multiple** sockets, which can be added/removed at runtime.
+ * Network synchronization.
  * Line of Sight handling.
+ * Custom *Widget* for each Target.
  * Switch Targets in any direction (in screen space).
- * Flexible processing input settings.
- * Multiple settings for capturing Target.
- * Custom rules for Target finding, switching, maintenance.
- * Various **rotation types**.
- * Custom owner/control rotation rules.
- * Multiple useful methods and delegates for LockOnTargetComponent's and TargetingHelperComponent's Owners.
- * Several customizable **Target offset** types.
- * Add custom rules for capturing the target (e.g. not capturing teammates).
- * Ability to Unlock All Invaders (*LockOnTargetComponent*) or specific one from Target on *request*.
- * Determine the mesh component by name.
- * Implicitly adds UWidgetComponent to Target (use *GetWidgetComponent()* to access it).
+ * Flexible input processing settings.
+ * Multiple settings for Target capturing.
+ * Various **rotation modes**.
+ * Several useful methods and delegates for LockOnTargetComponent and TargetingHelperComponent Owners.
+ * Custom rules for capturing the target (e.g. not capturing teammates).
+
+### **Network Design Philosophy**
+**Lock On Target** is just a system which finds a Target, stores and synchronizes it over the network. Finding the Target is not a quick operation to process it on the server for each player. Due to this and network relevancy opportunities (not relevant Target doesn't exist in the world) finding the Target processed **locally on the owning client.**  
 
 # Documentation
 [Instructions](https://github.com/J1blCblu/LockOnTarget/wiki) for setting up the plugin.
