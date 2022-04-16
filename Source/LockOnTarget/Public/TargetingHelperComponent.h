@@ -84,15 +84,15 @@ protected:
 
 public:
 	/** Target capture radius. Should be < Lost radius. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 50.f, UIMin = 50.f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 50.f, UIMin = 50.f, Units="cm"))
 	float CaptureRadius;
 
 	/** Target lost radius offset is added to the CaptureRadius. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, UIMin = 0.f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, UIMin = 0.f, Units="cm"))
 	float LostOffsetRadius;
 
 	/** May be helpful to avoid capturing the Target behind the Invader's back (distance is calculated from the camera location). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, UIMin = 0.f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, UIMin = 0.f, Units="cm"))
 	float MinimumCaptureRadius;
 
 	/** Custom offset is added to the socket location while the target is locked. */
@@ -225,7 +225,7 @@ public:
 
 private:
 	UPROPERTY(Transient)
-	class UWidgetComponent* WidgetComponent;
+	TObjectPtr<class UWidgetComponent> WidgetComponent;
 
 	void SyncLoadWidget(TSoftClassPtr<UUserWidget>& Widget);
 	void AsyncLoadWidget(TSoftClassPtr<UUserWidget> Widget);

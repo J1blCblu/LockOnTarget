@@ -65,7 +65,7 @@ public:
 protected:
 	/** Implementation of handling Target (find, switch, maintenance). */
 	UPROPERTY(BlueprintReadOnly, EditAnywhere, Instanced, Category = "Default Settings")
-	class UTargetHandlerBase* TargetHandlerImplementation;
+	TObjectPtr<class UTargetHandlerBase> TargetHandlerImplementation;
 
 public:
 	/** 
@@ -77,7 +77,7 @@ public:
 	 *	(e.g. via OnTargetLocked/OnTargetUnlocked delegates)
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced, Category = "Lock Settings")
-	class URotationModeBase* ControlRotationModeConfig;
+	TObjectPtr<class URotationModeBase> ControlRotationModeConfig;
 
 	/** 
 	 * Rotation mode for Owner Rotation.
@@ -88,7 +88,7 @@ public:
 	 *	(e.g. via OnTargetLocked/OnTargetUnlocked delegates)
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced, Category = "Lock Settings")
-	class URotationModeBase* OwnerRotationModeConfig;
+	TObjectPtr<class URotationModeBase> OwnerRotationModeConfig;
 
 	/** Should the component tick while the no Target is locked. */
 	UPROPERTY(AdvancedDisplay, EditAnywhere, Category = "Lock Settings")
@@ -117,7 +117,7 @@ public:
 	 * This field only works with the default native player's input handling via the SwitchTargetYaw/Pitch() methods.
 	 * You can write your own input handler and call the SwitchTargetManual() method with an input direction.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching", meta = (ClampMin = 0.1f, UIMin = 0.1))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching", meta = (ClampMin = 0.1f, UIMin = 0.1, Units="s"))
 	float BufferResetFrequency;
 
 	/** 
@@ -136,7 +136,7 @@ public:
 	 * This field only works with the default native player's input handling via the SwitchTargetYaw/Pitch() methods.
 	 * You can write your own input handler and call the SwitchTargetManual() method with a input direction.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching", meta = (ClampMin = 0.f, UIMin = 0.f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching", meta = (ClampMin = 0.f, UIMin = 0.f, Units="s"))
 	float SwitchDelay;
 
 	/** 

@@ -36,7 +36,7 @@ public:
 	uint8 AutoFindTargetFlags;
 
 	/** Multiply the CaptureRadius in the HelperComponent. May be useful for the progression. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (UIMin = 0.f, ClampMin = 0.f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (UIMin = 0.f, ClampMin = 0.f, Units="x"))
 	float TargetCaptureRadiusModifier;
 
 	/** Capture a Target that is only on the screen. */
@@ -58,7 +58,7 @@ public:
 	FVector2D SwitchingScreenOffset;
 
 	/** Angle to Target relative to the forward vector of the camera. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f, EditCondition = "!bScreenCapture", EditConditionHides))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f, EditCondition = "!bScreenCapture", EditConditionHides, Units="deg"))
 	float CaptureAngle;
 
 	/** Should modifier use a distance to the Target or a default modifier = 1000.f. */
@@ -74,7 +74,7 @@ public:
 	 * 
 	 * To find the closest Target this value should be 0.f. 
 	 */
-	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f))
+	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f, Units="x"))
 	float AngleWeightWhileFinding;
 
 	/**
@@ -86,7 +86,7 @@ public:
 	 * 
 	 * To find the closest Target this value should be 0.f.
 	 */
-	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f))
+	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f, Units="x"))
 	float AngleWeightWhileSwitching;
 
 	/** 
@@ -98,7 +98,7 @@ public:
 	 * The best Target will be the closest one to the trigonometric angle (the player input direction).
 	 * i.e. moving the mouse/stick up(x = 0, y = 1) the analog input will be converted to the trigonometric angle 90deg.
 	 */
-	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f))
+	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f, Units="x"))
 	float TrigonometricInputWeight;
 
 	/** 
@@ -128,7 +128,7 @@ public:
 	 * Any Target outside this trigonometric range [60, 120] i.e. down side off the screen (270deg)
 	 * can't be captured and the Target modifier won't be calculated for it.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f, Units="deg"))
 	float TrigonometricAngleRange;
 
 	/**
@@ -150,7 +150,7 @@ public:
 	 * Timer stops if the Target returns to the Line Of Sight.
 	 * If <= 0.f, the Target won't be unlocked. This means the Line of Sight is used only to find the Target.
 	 */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Line Of Sight", meta = (EditCondition = "bLineOfSightCheck", EditConditionHides))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Line Of Sight", meta = (EditCondition = "bLineOfSightCheck", EditConditionHides, Units="s"))
 	float LostTargetDelay;
 
 #if WITH_EDITORONLY_DATA
@@ -164,7 +164,7 @@ public:
 	FColor ModifierColor = FColor::Black;
 
 	/** Modifier display duration. */
-	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (EditCondition = "bDisplayModifier", EditConditionHides, ClampMin = 0.f, UIMin = 0.f))
+	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (EditCondition = "bDisplayModifier", EditConditionHides, ClampMin = 0.f, UIMin = 0.f, Units="s"))
 	float ModifierDuration = 3.f;
 
 #endif

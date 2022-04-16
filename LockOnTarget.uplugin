@@ -1,8 +1,8 @@
 {
 	"FileVersion": 1,
 	"Version": 1,
-	"VersionName": "1.2.0",
-	"EngineVersion": "4.27.0",
+	"VersionName": "1.2.1",
+	"EngineVersion": "5.0.0",
 	"FriendlyName": "LockOnTarget",
 	"Description": "Lock On Target system",
 	"Category": "Game",

@@ -23,7 +23,7 @@ public:
 public:
 
 	UPROPERTY(BlueprintReadWrite, Category = LOT_TargetInfo)
-	UTargetingHelperComponent* HelperComponent = nullptr;
+	TObjectPtr<UTargetingHelperComponent> HelperComponent = nullptr;
 
 	UPROPERTY(BlueprintReadWrite, Category = LOT_TargetInfo)
 	FName SocketForCapturing = NAME_None;

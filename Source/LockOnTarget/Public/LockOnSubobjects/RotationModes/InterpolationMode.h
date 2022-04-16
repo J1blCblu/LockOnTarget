@@ -20,7 +20,7 @@ class LOCKONTARGET_API UInterpolationMode : public URotationModeBase
 public:
 	UInterpolationMode();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interpolation", meta = (UIMin = 0.f, ClampMin = 0.f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interpolation", meta = (UIMin = 0.f, ClampMin = 0.f, Units="deg"))
 	float InterpolationSpeed;
 
 	/** URotationModeBase */
