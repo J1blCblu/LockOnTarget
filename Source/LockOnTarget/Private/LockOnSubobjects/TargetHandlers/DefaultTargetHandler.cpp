@@ -17,6 +17,7 @@
 
 UDefaultTargetHandler::UDefaultTargetHandler()
 	: AutoFindTargetFlags(0b11111)
+	, TargetCaptureRadiusModifier(1.f)
 	, bScreenCapture(true)
 	, FindingScreenOffset(15.f, 10.f)
 	, SwitchingScreenOffset(5.f, 0.f)
@@ -55,28 +56,31 @@ bool UDefaultTargetHandler::SwitchTarget_Implementation(FTargetInfo& TargetInfo,
 
 bool UDefaultTargetHandler::CanContinueTargeting_Implementation()
 {
+	UTargetingHelperComponent* CurrentHC = GetLockOn()->GetHelperComponent();
+	AActor* CurrentTarget = GetLockOn()->GetTarget();
+
 	//Check if the TargetingHelperComponent or the TargetActor are pending to kill.
-	if (!IsValid(GetLockOn()->GetTarget()))
+	if (!IsValid(CurrentTarget))
 	{
 		return HandleTargetClearing(EUnlockReasonBitmask::E_TargetInvalidation);
 	}
 
 	//Check the TargetingHelperComponent state.
-	if (!GetLockOn()->GetHelperComponent()->CanBeTargeted(GetLockOn()))
+	if (!CurrentHC->CanBeTargeted(GetLockOn()))
 	{
 		return HandleTargetClearing(EUnlockReasonBitmask::E_HelperComponentDiscard);
 	}
 
 	//Check the validity of the captured socket.
-	if (!GetLockOn()->GetHelperComponent()->Sockets.Contains(GetLockOn()->GetCapturedSocket()))
+	if (!CurrentHC->GetSockets().Contains(GetLockOn()->GetCapturedSocket()))
 	{
 		return HandleTargetClearing(EUnlockReasonBitmask::E_CapturedSocketInvalidation);
 	}
 
-	float DistanceToTarget = (GetLockOn()->GetTarget()->GetActorLocation() - GetLockOn()->GetCameraLocation()).Size();
+	float DistanceToTarget = (CurrentTarget->GetActorLocation() - GetLockOn()->GetCameraLocation()).Size();
 
 	//Lost Distance check.
-	if (DistanceToTarget > GetLockOn()->GetHelperComponent()->LostRadius)
+	if (DistanceToTarget > (CurrentHC->CaptureRadius * TargetCaptureRadiusModifier + CurrentHC->LostOffsetRadius))
 	{
 		return HandleTargetClearing(EUnlockReasonBitmask::E_OutOfLostDistance);
 	}
@@ -84,7 +88,7 @@ bool UDefaultTargetHandler::CanContinueTargeting_Implementation()
 	//Line of Sight check.
 	if (bLineOfSightCheck && LostTargetDelay > 0.f) //don't trace if timer <= 0.f.
 	{
-		LineOfSightTrace(GetLockOn()->GetTarget(), GetLockOn()->GetCapturedLocation()) ? StopLineOfSightTimer() : StartLineOfSightTimer();
+		LineOfSightTrace(CurrentTarget, GetLockOn()->GetCapturedLocation()) ? StopLineOfSightTimer() : StartLineOfSightTimer();
 	}
 
 	return true;
@@ -112,7 +116,7 @@ FTargetInfo UDefaultTargetHandler::FindTargetNative(float PlayerInput /*= -1.f*/
 			SCOPED_NAMED_EVENT(LOC_TatgetCalculations, FColor::Green);
 #endif
 
-			const TSet<FName>& TargetSockets = It->Sockets;
+			const TSet<FName>& TargetSockets = It->GetSockets();
 
 			for (const FName& TargetSocket : TargetSockets)
 			{
@@ -149,6 +153,8 @@ bool UDefaultTargetHandler::IsTargetable(UTargetingHelperComponent* HelpComp) co
 	SCOPED_NAMED_EVENT(LOC_IsTargetable, FColor::Red);
 #endif
 
+	//Necessary checks are here, auxiliary checks are in IsTargetableCustom().
+
 	/** Check TargetingHelperComponent's condition. */
 	if (!HelpComp->CanBeTargeted(GetLockOn()))
 	{
@@ -169,17 +175,24 @@ bool UDefaultTargetHandler::IsTargetable(UTargetingHelperComponent* HelpComp) co
 		return false;
 	}
 
-	const FVector DirectionToActor = HelperOwner->GetActorLocation() - GetLockOn()->GetCameraLocation();
-	const float Distance = DirectionToActor.Size();
+	return IsTargetableCustom(HelpComp);
+}
+
+bool UDefaultTargetHandler::IsTargetableCustom_Implementation(UTargetingHelperComponent* HelperComponent) const
+{
+	//TODO: Maybe calculate the distance for CaptureRadius from the Owner, not the camera.
+	//MinimumCaptureRadius should be calculated from the camera.
+
+	const float Distance = (HelperComponent->GetOwner()->GetActorLocation() - GetLockOn()->GetCameraLocation()).Size();
 
 	/** Capture the Target radius check. */
-	if (Distance > HelpComp->CaptureRadius)
+	if (Distance > (HelperComponent->CaptureRadius * TargetCaptureRadiusModifier))
 	{
 		return false;
 	}
 
-	/** MinDistance to the Camera check. */
-	if (Distance < HelpComp->MinDistance)
+	/** MinimumCaptureRadius to the Camera check. */
+	if (Distance < HelperComponent->MinimumCaptureRadius)
 	{
 		return false;
 	}
@@ -326,7 +339,7 @@ TPair<FName, float> UDefaultTargetHandler::TrySwitchSocket(float PlayerInput) co
 
 	TPair<FName, float> BestSocket{CapturedSocket, FLT_MAX};
 
-	const TSet<FName>& TargetSockets = CapturedHC->Sockets;
+	const TSet<FName>& TargetSockets = CapturedHC->GetSockets();
 
 	for (const FName& Socket : TargetSockets)
 	{

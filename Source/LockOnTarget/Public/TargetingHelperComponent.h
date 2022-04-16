@@ -50,10 +50,7 @@ protected:
 	// UActorComponent
 	virtual void BeginPlay() override;
 	virtual void EndPlay(EEndPlayReason::Type Reason) override;
-
-#if WITH_EDITORONLY_DATA
-	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& Event) override;
-#endif
+	virtual void InitializeComponent() override;
 	//~UActorComponent
 
 public:
@@ -67,6 +64,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings")
 	bool bCanBeTargeted;
 
+protected:
 	/** 
 	 * Provide the LockOnTargetComponent the proper mesh component for finding the Sockets and the Widget attachment.
 	 * If the mesh component is invalid or None then will try to find the first MeshComponent in the Owner's components hierarchy.
@@ -84,50 +82,53 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Default Settings")
 	TSet<FName> Sockets;
 
+public:
 	/** Target capture radius. Should be < Lost radius. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Default Settings", meta = (ClampMin = 50.f, UIMin = 50.f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 50.f, UIMin = 50.f))
 	float CaptureRadius;
 
-	/** Target lost radius. Should be > Capture radius. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Default Settings", meta = (ClampMin = 50.f, UIMin = 50.f))
-	float LostRadius;
+	/** Target lost radius offset is added to the CaptureRadius. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, UIMin = 0.f))
+	float LostOffsetRadius;
 
 	/** May be helpful to avoid capturing the Target behind the Invader's back (distance is calculated from the camera location). */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Default Settings", meta = (ClampMin = 0.f, UIMin = 0.f))
-	float MinDistance;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, UIMin = 0.f))
+	float MinimumCaptureRadius;
 
 	/** Custom offset is added to the socket location while the target is locked. */
-	UPROPERTY(EditAnywhere, Category = "Target Offset")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Offset")
 	EOffsetType OffsetType;
 
 	/** Target offset in the camera space. */
-	UPROPERTY(EditAnywhere, Category = "Target Offset", meta = (EditCondition = "OffsetType == EOffsetType::EConstant"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Offset", meta = (EditCondition = "OffsetType == EOffsetType::EConstant", EditConditionHides))
 	FVector TargetOffset;
 
 	/** Curve distance based target height offset in the camera space. */
-	UPROPERTY(EditAnywhere, Category = "Target Offset", meta = (EditCondition = "OffsetType == EOffsetType::EAdaptiveCurve"))
+	UPROPERTY(EditAnywhere, Category = "Target Offset", meta = (EditCondition = "OffsetType == EOffsetType::EAdaptiveCurve", EditConditionHides, XAxisName="Distance", YAxisName="Height offset"))
 	FRuntimeFloatCurve HeightOffsetCurve;
 
+protected:
 	/** Should the Target be marked with the Widget which is attached to the Socket. */
 	UPROPERTY(EditAnywhere, Category = "Widget")
 	bool bEnableWidget;
 
+public:
 	/** Widget Class. Safe to fill and don't use. Uses the soft class and loads only if it's needed. */
-	UPROPERTY(EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget"))
+	UPROPERTY(EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget", EditConditionHides))
 	TSoftClassPtr<class UUserWidget> WidgetClass;
 
 	/** Offset is applied to the Widget. */
-	UPROPERTY(EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget", meta = (EditCondition = "bEnableWidget", EditConditionHides))
 	FVector WidgetOffset;
 
 	/** Load the Widget class async, otherwise sync. */
-	UPROPERTY(AdvancedDisplay, EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget"))
+	UPROPERTY(AdvancedDisplay, EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget", EditConditionHides))
 	bool bAsyncLoadWidget;
 
 #if WITH_EDITORONLY_DATA
-protected:
+public:
 	/** Visualize the debug info. */
-	UPROPERTY(AdvancedDisplay, EditAnywhere, Category = "Default Settings")
+	UPROPERTY(EditAnywhere, Category = "Debug")
 	bool bVisualizeDebugInfo = false;
 #endif
 
@@ -165,19 +166,23 @@ public:
 public:
 	/** Get all the Invaders that are locked on the Owner. Usually 1 in a standalone game. */
 	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
-	TSet<ULockOnTargetComponent*> GetInvaders() const { return Invaders;}
+	const TSet<ULockOnTargetComponent*>& GetInvaders() const { return Invaders;}
 
 	/** Whether the Owner is currently Targeted by any Invader.*/
 	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
 	bool IsTargeted() const { return Invaders.Num() > 0; }
 
+	/** Get all sockets. */
+	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
+	const TSet<FName>& GetSockets() const { return Sockets; }
+
 	/** Add a Socket at runtime. */
-	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
-	bool AddSocket(UPARAM(ref) FName& Socket);
+	UFUNCTION(BlueprintCallable, Category = "TargetingHelper", meta = (AutoCreateRefTerm = "Socket"))
+	bool AddSocket(const FName& Socket = NAME_None);
 
 	/** Remove a socket at runtime. */
-	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
-	bool RemoveSocket(const FName& Socket);
+	UFUNCTION(BlueprintCallable, Category = "TargetingHelper", meta = (AutoCreateRefTerm = "Socket"))
+	bool RemoveSocket(const FName& Socket = NAME_None);
 
 	/** Update the MeshComponent for capturing the sockets. */
 	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
@@ -186,14 +191,6 @@ public:
 	/** Return the implicit UWidgetComponent. */
 	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
 	UWidgetComponent* GetWidgetComponent() const{ return WidgetComponent;}
-
-	/** Get all sockets. */
-	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
-	TSet<FName> GetSockets() const {return Sockets; }
-
-	/** Update the CaptureRadius, LostRadius, MinDistance. */
-	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
-	void ChangeRadius(float NewCaptureRadius = 2000.f, float NewLostRadius = 2100.f, float NewMinDistance = 100.f);
 
 /*******************************************************************************************/
 /*******************************  Native Fields  *******************************************/
@@ -207,8 +204,9 @@ private:
 /*******************************  Native Methods  ******************************************/
 /*******************************************************************************************/
 
-	/** Class Interface. */
 public:
+	/** Class Interface. */
+
 	/** Called to inform the TargetingHelperComponent that it's been Targeted.*/
 	virtual void CaptureTarget(ULockOnTargetComponent* Instigator, const FName& Socket);
 
@@ -217,6 +215,7 @@ public:
 
 	/** @return	- World socket location. bWithoffset = true should be with the instigator for the camera space offset. */
 	FVector GetSocketLocation(const FName& Socket, bool bWithOffset = false, const ULockOnTargetComponent* Instigator = nullptr) const;
+
 	/** ~Class Interface. */
 
 public:
@@ -225,7 +224,6 @@ public:
 	void HideWidget(ULockOnTargetComponent* Instigator);
 
 private:
-	//TODO: Maybe wrap the UWidgetComponent with the preprocessor #if !WITH_SERVER_CODE
 	UPROPERTY(Transient)
 	class UWidgetComponent* WidgetComponent;
 
@@ -236,13 +234,14 @@ private:
 private:
 	/** Cached mesh component is used to calculate the socket location and the widget attachment. */
 	mutable TWeakObjectPtr<UMeshComponent> OwnerMeshComponent;
+
+	void InitMeshComponent() const;
 	USceneComponent* GetMeshComponent() const;
 	USceneComponent* GetFirstMeshComponent() const;
 	USceneComponent* GetRootComponent() const;
 
 private:
 	void AddOffset(FVector& Location, const ULockOnTargetComponent* Instigator) const;
-	void InitMeshComponent() const;
 };
 
 template <typename T>

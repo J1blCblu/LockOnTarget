@@ -35,6 +35,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (BitMask, BitmaskEnum = "EUnlockReasonBitmask"))
 	uint8 AutoFindTargetFlags;
 
+	/** Multiply the CaptureRadius in the HelperComponent. May be useful for the progression. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (UIMin = 0.f, ClampMin = 0.f))
+	float TargetCaptureRadiusModifier;
+
 	/** Capture a Target that is only on the screen. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings")
 	bool bScreenCapture;
@@ -43,18 +47,18 @@ public:
 	 * Narrows the screen borders(x and y) from the both sides by a percentage when trying to find a new Target.
 	 * Useful for not capturing a Target near the screen borders. 
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (EditCondition = "bScreenCapture"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (EditCondition = "bScreenCapture", EditConditionHides))
 	FVector2D FindingScreenOffset;
 
 	/**
 	 * Narrows the screen borders(x and y) from the both sides by a percentage when trying to switch the Target. 
 	 * Useful for not capturing a Target near screen borders. 
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (EditCondition = "bScreenCapture"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (EditCondition = "bScreenCapture", EditConditionHides))
 	FVector2D SwitchingScreenOffset;
 
 	/** Angle to Target relative to the forward vector of the camera. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f, EditCondition = "!bScreenCapture"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f, EditCondition = "!bScreenCapture", EditConditionHides))
 	float CaptureAngle;
 
 	/** Should modifier use a distance to the Target or a default modifier = 1000.f. */
@@ -110,7 +114,7 @@ public:
 	 * On the picture the CameraRotationOffsetForCalculations pitch value is changed => The Best Target(0) is now higher on the screen.
 	 */
 
-	UPROPERTY(EditAnywhere, Category = "Default Solver|Advanced")
+	UPROPERTY(EditAnywhere, Category = "Default Solver")
 	FRotator CameraRotationOffsetForCalculations;
 
 	/** 
@@ -138,7 +142,7 @@ public:
 	bool bLineOfSightCheck;
 
 	/** Object channels for the trace. If trace hits something then the Line of Sight fails. Target and Owner will be ignored. */
-	UPROPERTY(EditDefaultsOnly, Category = "Line Of Sight", meta = (EditCondition = "bLineOfSightCheck"))
+	UPROPERTY(EditDefaultsOnly, Category = "Line Of Sight", meta = (EditCondition = "bLineOfSightCheck", EditConditionHides))
 	TArray<TEnumAsByte<ECollisionChannel>> TraceObjectChannels;
 
 	/** 
@@ -146,21 +150,21 @@ public:
 	 * Timer stops if the Target returns to the Line Of Sight.
 	 * If <= 0.f, the Target won't be unlocked. This means the Line of Sight is used only to find the Target.
 	 */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Line Of Sight", meta = (EditCondition = "bLineOfSightCheck"))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Line Of Sight", meta = (EditCondition = "bLineOfSightCheck", EditConditionHides))
 	float LostTargetDelay;
 
 #if WITH_EDITORONLY_DATA
 
 	/** Display a Target temporary modifier for debugging. */
-	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (Bitmask, BitmaskEnum = "EDebugFlags"))
+	UPROPERTY(EditDefaultsOnly, Category = "Debug")
 	bool bDisplayModifier = false;
 
 	/** Modifier Color. */
-	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (HideAlphaChannel, EditCondition = "bDisplayModifier"))
+	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (HideAlphaChannel, EditCondition = "bDisplayModifier", EditConditionHides))
 	FColor ModifierColor = FColor::Black;
 
 	/** Modifier display duration. */
-	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (EditCondition = "bDisplayModifier", ClampMin = 0.f, UIMin = 0.f))
+	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (EditCondition = "bDisplayModifier", EditConditionHides, ClampMin = 0.f, UIMin = 0.f))
 	float ModifierDuration = 3.f;
 
 #endif
@@ -168,7 +172,6 @@ public:
 	/*******************************************************************************************/
 	/*******************************  BP Overridable  ******************************************/
 	/*******************************************************************************************/
-
 protected:
 	/**
 	 * Used to find the best Target from the sorted Targets.
@@ -182,8 +185,18 @@ protected:
 	 * @param PlayerInput - Player trigonometric input(0, 360). If >= 0 then the player performs to switch the Target/socket.
 	 * @return - Target modifier should be > 0.f.
 	 */
-	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget")
+	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Default Target Handler")
 	float CalculateTargetModifier(const FVector& Location, UTargetingHelperComponent* TargetHelperComponent, float PlayerInput) const;
+
+	/**
+	 * Used for CaptureRadius checks by default.
+	 * 
+	 * Can be overridden to provide custom rules.
+	 * If you want to keep CaptureRadius checks, make sure to call the parent method.
+	 * Note that the LineOfSight is handled in the native private method after this method returns true.
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Default Target Handler")
+	bool IsTargetableCustom(UTargetingHelperComponent* HelperComponent) const;
 
 	/*******************************************************************************************/
 	/******************************* Target Handler Interface **********************************/
@@ -202,7 +215,7 @@ public:
 private:
 	/** Finding target */
 	FTargetInfo FindTargetNative(float PlayerInput = -1.f) const;
-	virtual bool IsTargetable(UTargetingHelperComponent* HelpComp) const;
+	bool IsTargetable(UTargetingHelperComponent* HelpComp) const;
 	bool IsSocketValid(const FName& Socket, UTargetingHelperComponent* HelperComponent, float PlayerInput, const FVector& SocketLocation) const;
 
 	bool SwitchTargetNative(FTargetInfo& TargetInfo, float PlayerInput) const;

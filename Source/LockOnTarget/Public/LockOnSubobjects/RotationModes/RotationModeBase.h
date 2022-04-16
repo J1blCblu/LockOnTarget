@@ -25,7 +25,7 @@ public:
 	uint8 RotationAxes;
 
 	/** Clamps the return value of the pitch. Where x - min value, y - max value. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Base Config", meta = (EditCondition = "RotationAxes & ERot::E_Pitch"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Base Config", meta = (EditCondition = "RotationAxes & ERot::E_Pitch", EditConditionHides))
 	FVector2D PitchClamp;
 
 	/** Offset applied to returned rotation. */
