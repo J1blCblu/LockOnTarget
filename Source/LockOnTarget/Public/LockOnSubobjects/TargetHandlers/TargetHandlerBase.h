@@ -30,7 +30,7 @@ public:
 	 *
 	 * @return - New Target information (TargetingHelperComponent and Socket).
 	 */
-	UFUNCTION(BlueprintNativeEvent)
+	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Target Handler Base")
 	FTargetInfo FindTarget();
 	
 	/**
@@ -44,20 +44,20 @@ public:
 	 * @param PlayerInput - Player input in the trigonometric deg(0.f, 180.f).
 	 * @return - was switch successful (a new Target or a new socket) otherwise should be false.
 	 */
-	UFUNCTION(BlueprintNativeEvent)
+	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Target Handler Base")
 	bool SwitchTarget(FTargetInfo& TargetInfo, float PlayerInput);
 
 	/** Can the Target be locked until the next update. */
-	UFUNCTION(BlueprintNativeEvent)
+	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Target Handler Base")
 	bool CanContinueTargeting();
 
 protected:
 	/** Called when the LockOnTargetComponent successfully locked the Target. */
-	UFUNCTION(BlueprintImplementableEvent, meta = (BlueprintProtected))
+	UFUNCTION(BlueprintImplementableEvent, Category = "LockOnTarget|Target Handler Base", meta = (BlueprintProtected))
 	void OnTargetLocked();
 
 	/** Called when the LockOnTargetComponent successfully unlocked the Target. */
-	UFUNCTION(BlueprintImplementableEvent, meta = (BlueprintProtected))
+	UFUNCTION(BlueprintImplementableEvent, Category = "LockOnTarget|Target Handler Base", meta = (BlueprintProtected))
 	void OnTargetUnlocked();
 
 /*******************************************************************************************/

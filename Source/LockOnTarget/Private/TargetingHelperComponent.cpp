@@ -10,8 +10,8 @@ UTargetingHelperComponent::UTargetingHelperComponent()
 	: bCanBeTargeted(true)
 	, MeshName(NAME_None)
 	, CaptureRadius(1700.f)
-	, LostRadius(1800.f)
-	, MinDistance(100.f)
+	, LostOffsetRadius(100.f)
+	, MinimumCaptureRadius(100.f)
 	, TargetOffset(0.f)
 	, bEnableWidget(true)
 	, WidgetOffset(0.f)
@@ -19,6 +19,9 @@ UTargetingHelperComponent::UTargetingHelperComponent()
 {
 	//Tick isn't allowed due to the purpose of this component which acts as both storage and subject (for listeners).
 	PrimaryComponentTick.bCanEverTick = false;
+
+	//Request InitializeComponent().
+	bWantsInitializeComponent = true;	//TODO: Maybe wrap with the preprocessor #if !WITH_SERVER_CODE to exclude widget creation on the server.
 
 	Sockets.Add(NAME_None);
 
@@ -28,17 +31,21 @@ UTargetingHelperComponent::UTargetingHelperComponent()
 
 	FSoftClassPath WidgetPath = TEXT("WidgetBlueprint'/LockOnTarget/WBP_Target.WBP_Target_C'");
 	WidgetClass = TSoftClassPtr<UUserWidget>(WidgetPath);
+}
 
-	//Don't create the UWidgetComponent for the CDO.
-	//TODO: Maybe wrap the UWidgetComponent with the preprocessor #if !WITH_SERVER_CODE
-	WidgetComponent = HasAnyFlags(RF_ClassDefaultObject) ? nullptr : CreateDefaultSubobject<UWidgetComponent>(TEXT("LockOnWidget"));
-
-	if (WidgetComponent)
+void UTargetingHelperComponent::InitializeComponent()
+{
+	if(!GIsEditor || GIsPlayInEditorWorld)
 	{
-		WidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
-		WidgetComponent->SetVisibility(false);
-		WidgetComponent->SetDrawAtDesiredSize(true);
-		WidgetComponent->AddRelativeLocation(WidgetOffset);
+		WidgetComponent = bEnableWidget ? NewObject<UWidgetComponent>(this, MakeUniqueObjectName(this, UWidgetComponent::StaticClass(), TEXT("LOT_Widget"))) : nullptr;
+
+		if (WidgetComponent)
+		{
+			WidgetComponent->RegisterComponent();
+			WidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
+			WidgetComponent->SetVisibility(false);
+			WidgetComponent->SetDrawAtDesiredSize(true);
+		}
 	}
 }
 
@@ -124,6 +131,7 @@ void UTargetingHelperComponent::UpdateWidget(const FName& Socket, ULockOnTargetC
 
 			USceneComponent* ParentComp = Socket != NAME_None ? GetMeshComponent() : GetRootComponent();
 			WidgetComponent->AttachToComponent(ParentComp, FAttachmentTransformRules::SnapToTargetNotIncludingScale, Socket);
+			WidgetComponent->SetRelativeLocation(WidgetOffset);
 			WidgetComponent->SetVisibility(true);
 		}
 		else
@@ -184,7 +192,7 @@ bool UTargetingHelperComponent::CanBeTargeted_Implementation(ULockOnTargetCompon
 	return bCanBeTargeted && (Sockets.Num() > 0);
 }
 
-bool UTargetingHelperComponent::AddSocket(FName& Socket)
+bool UTargetingHelperComponent::AddSocket(const FName& Socket)
 {
 	bool bReturn = false;
 
@@ -199,13 +207,6 @@ bool UTargetingHelperComponent::AddSocket(FName& Socket)
 bool UTargetingHelperComponent::RemoveSocket(const FName& Socket)
 {
 	return Sockets.Remove(Socket) > 0;
-}
-
-void UTargetingHelperComponent::ChangeRadius(float NewCaptureRadius, float NewLostRadius, float NewMinDistance /* = 100.f */)
-{
-	LostRadius = FMath::Clamp(FMath::Abs(NewLostRadius), 50.f, FLT_MAX);
-	CaptureRadius = FMath::Clamp(FMath::Abs(NewCaptureRadius), 50.f, LostRadius);
-	MinDistance = FMath::Clamp(FMath::Abs(NewMinDistance), 0.f, CaptureRadius);
 }
 
 FVector UTargetingHelperComponent::GetSocketLocation(const FName& Socket, bool bWithOffset, const ULockOnTargetComponent* Instigator) const
@@ -291,32 +292,3 @@ USceneComponent* UTargetingHelperComponent::GetRootComponent() const
 {
 	return GetOwner() ? GetOwner()->GetRootComponent() : nullptr;
 }
-
-#if WITH_EDITORONLY_DATA
-void UTargetingHelperComponent::PostEditChangeProperty(FPropertyChangedEvent& Event)
-{
-	Super::PostEditChangeProperty(Event);
-
-	const FName PropertyName = Event.GetPropertyName();
-
-	if (PropertyName == GET_MEMBER_NAME_CHECKED(UTargetingHelperComponent, CaptureRadius))
-	{
-		if (LostRadius < CaptureRadius)
-		{
-			LostRadius = CaptureRadius + 100.f;
-		}
-	}
-	else if (PropertyName == GET_MEMBER_NAME_CHECKED(UTargetingHelperComponent, LostRadius) && CaptureRadius > LostRadius)
-	{
-		if (CaptureRadius > LostRadius)
-		{
-			CaptureRadius = FMath::Clamp(LostRadius - 100.f, 50.f, LostRadius);
-		}
-	}
-
-	if (MinDistance > CaptureRadius)
-	{
-		MinDistance = FMath::Clamp(CaptureRadius - 100.f, 0.f, CaptureRadius);
-	}
-}
-#endif

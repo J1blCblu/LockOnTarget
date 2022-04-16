@@ -62,10 +62,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings")
 	bool bCanCaptureTarget;
 
+protected:
 	/** Implementation of handling Target (find, switch, maintenance). */
 	UPROPERTY(BlueprintReadOnly, EditAnywhere, Instanced, Category = "Default Settings")
 	class UTargetHandlerBase* TargetHandlerImplementation;
 
+public:
 	/** 
 	 * Rotation mode for the control Rotation. 
 	 * 
@@ -74,7 +76,7 @@ public:
 	 *	+ bUseControllerRotationYaw in APawn.
 	 *	(e.g. via OnTargetLocked/OnTargetUnlocked delegates)
 	 */
-	UPROPERTY(BlueprintReadOnly, EditAnywhere, Instanced, Category = "Lock Settings")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced, Category = "Lock Settings")
 	class URotationModeBase* ControlRotationModeConfig;
 
 	/** 
@@ -85,10 +87,10 @@ public:
 	 *	+ bUseControllerRotationYaw in APawn.
 	 *	(e.g. via OnTargetLocked/OnTargetUnlocked delegates)
 	 */
-	UPROPERTY(BlueprintReadOnly, EditAnywhere, Instanced, Category = "Lock Settings")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced, Category = "Lock Settings")
 	class URotationModeBase* OwnerRotationModeConfig;
 
-	/** Should the component tick while the Target is locked. */
+	/** Should the component tick while the no Target is locked. */
 	UPROPERTY(AdvancedDisplay, EditAnywhere, Category = "Lock Settings")
 	bool bDisableTickWhileUnlocked;
 
@@ -104,7 +106,7 @@ public:
 	 * You can override GetInputBufferThreshold() for a particular analog controller.
 	 * 
 	 * This field only works with the default native player's input handling via the SwitchTargetYaw/Pitch() methods.
-	 * You can write your own input handler and call the SwitchTargetManual() method with a input direction.
+	 * You can write your own input handler and call the SwitchTargetManual() method with an input direction.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching", meta = (ClampMin = 0.f, UIMin = 0.f))
 	float InputBufferThreshold;
@@ -113,7 +115,7 @@ public:
 	 * InputBuffer resets to 0.f at this frequency.
 	 * 
 	 * This field only works with the default native player's input handling via the SwitchTargetYaw/Pitch() methods.
-	 * You can write your own input handler and call the SwitchTargetManual() method with a input direction.
+	 * You can write your own input handler and call the SwitchTargetManual() method with an input direction.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching", meta = (ClampMin = 0.1f, UIMin = 0.1))
 	float BufferResetFrequency;
@@ -123,7 +125,7 @@ public:
 	 * X - min value, Y - max value. Usually these values should be opposite.
 	 * 
 	 * This field only works with the default native player's input handling via the SwitchTargetYaw/Pitch() methods.
-	 * You can write your own input handler and call the SwitchTargetManual() method with a input direction.
+	 * You can write your own input handler and call the SwitchTargetManual() method with an input direction.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching")
 	FVector2D ClampInputVector;
@@ -141,7 +143,7 @@ public:
 	 * Freeze the filling of the InputBuffer until the player input reaches the UnfreezeThreshold after a successful switch. 
 	 * 
 	 * This field only works with the default native player's input handling via the SwitchTargetYaw/Pitch() methods.
-	 * You can write your own input handler and call the SwitchTargetManual() method with a input direction.
+	 * You can write your own input handler and call the SwitchTargetManual() method with an input direction.
 	 */
 	UPROPERTY(EditAnywhere, Category = "Target Switching")
 	bool bFreezeInputAfterSwitch;
@@ -150,9 +152,9 @@ public:
 	 * Unfreeze the filling of the InputBuffer if the player input is less than a threshold.
 	 * 
 	 * This field only works with the default native player's input handling via the SwitchTargetYaw/Pitch() methods.
-	 * You can write your own input handler and call the SwitchTargetManual() method with a input direction.
+	 * You can write your own input handler and call the SwitchTargetManual() method with an input direction.
 	 */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Target Switching", meta = (ClampMin = 0.f, UIMin = 0.f, EditCondition = "bFreezeInputAfterSwitch"))
+	UPROPERTY(EditAnywhere, Category = "Target Switching", meta = (ClampMin = 0.f, UIMin = 0.f, EditCondition = "bFreezeInputAfterSwitch", EditConditionHides))
 	float UnfreezeThreshold;
 
 #if WITH_EDITORONLY_DATA
@@ -165,7 +167,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Debug")
 	bool bShowPlayerInput = false;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (HideAlphaChannel, EditCondition = "bShowPlayerInput || bShowTargetInfo"))
+	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (HideAlphaChannel, EditCondition = "bShowPlayerInput || bShowTargetInfo", EditConditionHides))
 	FColor DebugInfoColor = FColor::Black;
 
 #endif
@@ -189,7 +191,6 @@ public:
 /*******************************************************************************************/
 /*******************************  BP Methods  **********************************************/
 /*******************************************************************************************/
-
 public:
 	/** Main method of capturing and clearing a Target. */
 	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Player Input")
@@ -208,8 +209,8 @@ public:
 	bool SwitchTargetManual(float TrigonometricInput);
 
 	/** Manual Target capturing. Useful for custom input processing. */
-	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Manual Handling")
-	void SetLockOnTargetManual(AActor* NewTarget, const FName& Socket = FName(TEXT("spine_02")));
+	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Manual Handling", meta = (AutoCreateRefTerm = "Socket"))
+	void SetLockOnTargetManual(AActor* NewTarget, const FName& Socket = NAME_None);
 
 	/** Manual Target clearing. Useful for custom input processing. */
 	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Manual Handling")

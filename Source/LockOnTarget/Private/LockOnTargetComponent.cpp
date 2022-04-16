@@ -574,7 +574,7 @@ void ULockOnTargetComponent::DebugOnTick() const
 		}
 
 		GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("Input Buffer ratio = %.3f / %.3f InputVector2D: X %.3f, Y %.3f "), InputBuffer.Size(), GetInputBufferThreshold(), InputBuffer.X, InputBuffer.Y), true, FVector2D(1.1f));
-		GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("\n\nTarget: %s \nCapturedSocket: %s \nSockets Amount: %i\nDuration: %.2f "), *GetNameSafe(GetTarget()), *PrivateTargetInfo.SocketForCapturing.ToString(), GetHelperComponent()->Sockets.Num(), GetTargetingDuration()), true, FVector2D(1.15f));
+		GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("\n\nTarget: %s \nCapturedSocket: %s \nSockets Amount: %i\nDuration: %.2f "), *GetNameSafe(GetTarget()), *PrivateTargetInfo.SocketForCapturing.ToString(), GetHelperComponent()->GetSockets().Num(), GetTargetingDuration()), true, FVector2D(1.15f));
 	}
 }
 
