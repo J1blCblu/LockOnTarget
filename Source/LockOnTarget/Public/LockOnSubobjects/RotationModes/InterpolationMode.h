@@ -25,5 +25,4 @@ public:
 
 	/** URotationModeBase */
 	virtual FRotator GetRotation_Implementation(const FRotator& CurrentRotation, const FVector& InstigatorLocation, const FVector& TargetLocation, float DeltaTime) override;
-	/** ~URotationModeBase */
 };

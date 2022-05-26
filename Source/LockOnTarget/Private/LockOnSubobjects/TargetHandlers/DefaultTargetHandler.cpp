@@ -1,15 +1,17 @@
 // Copyright 2022 Ivan Baktenkov. All Rights Reserved.
 
 #include "LockOnSubobjects/TargetHandlers/DefaultTargetHandler.h"
+#include "LockOnTargetComponent.h"
+#include "TargetingHelperComponent.h"
+#include "Utilities/LOTC_BPLibrary.h"
+#include "Utilities/Structs.h"
+
 #include "CollisionQueryParams.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
-#include "LockOnTargetComponent.h"
-#include "TargetingHelperComponent.h"
 #include "TimerManager.h"
 #include "UObject/UObjectIterator.h"
-#include "Utilities/LOTC_BPLibrary.h"
-#include "Utilities/Structs.h"
+#include <type_traits>
 
 #if WITH_EDITORONLY_DATA
 #include "DrawDebugHelpers.h"
@@ -31,7 +33,7 @@ UDefaultTargetHandler::UDefaultTargetHandler()
 	, bLineOfSightCheck(true)
 	, LostTargetDelay(1.5f)
 {
-	TraceObjectChannels.Push(ECollisionChannel::ECC_WorldStatic);
+	TraceObjectChannels.Emplace(ECollisionChannel::ECC_WorldStatic);
 }
 
 /*******************************************************************************************/
@@ -40,7 +42,7 @@ UDefaultTargetHandler::UDefaultTargetHandler()
 
 void UDefaultTargetHandler::OnTargetUnlockedNative()
 {
-	Super::OnTargetUnlocked();
+	Super::OnTargetUnlockedNative();
 	StopLineOfSightTimer();
 }
 
@@ -49,9 +51,9 @@ FTargetInfo UDefaultTargetHandler::FindTarget_Implementation()
 	return FindTargetNative();
 }
 
-bool UDefaultTargetHandler::SwitchTarget_Implementation(FTargetInfo& TargetInfo, float PlayerInput)
+bool UDefaultTargetHandler::SwitchTarget_Implementation(FTargetInfo& TargetInfo, FVector2D PlayerInput)
 {
-	return SwitchTargetNative(TargetInfo, PlayerInput);
+	return SwitchTargetNative(TargetInfo, ULOTC_BPLibrary::GetTrigonometricAngle2D(PlayerInput));
 }
 
 bool UDefaultTargetHandler::CanContinueTargeting_Implementation()
@@ -101,7 +103,7 @@ bool UDefaultTargetHandler::CanContinueTargeting_Implementation()
 FTargetInfo UDefaultTargetHandler::FindTargetNative(float PlayerInput /*= -1.f*/) const
 {
 #if LOC_INSIGHTS
-	SCOPED_NAMED_EVENT(LOC_TargetFinding, FColor::Purple);
+	SCOPED_NAMED_EVENT(LOT_TargetFinding, FColor::Purple);
 #endif
 
 	float BestModifier = FLT_MAX;
@@ -110,47 +112,49 @@ FTargetInfo UDefaultTargetHandler::FindTargetNative(float PlayerInput /*= -1.f*/
 
 	for (TObjectIterator<UTargetingHelperComponent> It; It; ++It)
 	{
-		if (It->GetWorld() == GetWorld() && IsTargetable(*It))
+		if (It->GetWorld() != GetWorld() || !IsTargetable(*It))
 		{
+			continue;
+		}
+
 #if LOC_INSIGHTS
-			SCOPED_NAMED_EVENT(LOC_TatgetCalculations, FColor::Green);
+		SCOPED_NAMED_EVENT(LOT_TatgetCalculations, FColor::Green);
 #endif
 
-			const TSet<FName>& TargetSockets = It->GetSockets();
+		const TSet<FName>& TargetSockets = It->GetSockets();
 
-			for (const FName& TargetSocket : TargetSockets)
+		for (const FName& TargetSocket : TargetSockets)
+		{
+			const FVector SocketLocation = It->GetSocketLocation(TargetSocket);
+
+			if (IsSocketValid(TargetSocket, *It, PlayerInput, SocketLocation))
 			{
-				const FVector SocketLocation = It->GetSocketLocation(TargetSocket);
+				const float CurrentModifier = CalculateTargetModifier(SocketLocation, *It, PlayerInput);
 
-				if (IsSocketValid(TargetSocket, *It, PlayerInput, SocketLocation))
+				if (CurrentModifier < BestModifier)
 				{
-					const float CurrentModifier = CalculateTargetModifier(SocketLocation, *It, PlayerInput);
-
-					if (CurrentModifier < BestModifier)
-					{
-						BestModifier = CurrentModifier;
-						BestSocket = TargetSocket;
-						BestTarget = *It;
-					}
+					BestModifier = CurrentModifier;
+					BestSocket = TargetSocket;
+					BestTarget = *It;
+				}
 
 #if WITH_EDITORONLY_DATA
-					if (bDisplayModifier)
-					{
-						DrawDebugString(GetWorld(), SocketLocation, FString::Printf(TEXT("%.1f\n"), CurrentModifier), nullptr, ModifierColor, ModifierDuration, false, 1.2f);
-					}
-#endif
+				if (bDisplayModifier)
+				{
+					DrawDebugString(GetWorld(), SocketLocation, FString::Printf(TEXT("%.1f\n"), CurrentModifier), nullptr, ModifierColor, ModifierDuration, false, 1.2f);
 				}
+#endif
 			}
 		}
 	}
 
-	return {BestTarget, BestSocket};
+	return { BestTarget, BestSocket };
 }
 
 bool UDefaultTargetHandler::IsTargetable(UTargetingHelperComponent* HelpComp) const
 {
 #if LOC_INSIGHTS
-	SCOPED_NAMED_EVENT(LOC_IsTargetable, FColor::Red);
+	SCOPED_NAMED_EVENT(LOT_IsTargetable, FColor::Red);
 #endif
 
 	//Necessary checks are here, auxiliary checks are in IsTargetableCustom().
@@ -246,6 +250,7 @@ bool UDefaultTargetHandler::IsSocketValid(const FName& Socket, UTargetingHelperC
 
 float UDefaultTargetHandler::CalculateTargetModifier_Implementation(const FVector& Location, UTargetingHelperComponent* TargetHelperComponent, float PlayerInput) const
 {
+	//@TODO: Refactor this, especially VectorForAngleCalculation.
 	const FVector CameraLocation = GetLockOn()->GetCameraLocation();
 	const FVector VectorForAngleCalculation = GetLockOn()->IsTargetLocked() ? GetLockOn()->GetCapturedLocation() - CameraLocation : (GetLockOn()->GetCameraRotation().Quaternion() * CameraRotationOffsetForCalculations.Quaternion()).Rotator().Vector();
 	const FVector Direction = Location - CameraLocation;
@@ -259,7 +264,7 @@ float UDefaultTargetHandler::CalculateTargetModifier_Implementation(const FVecto
 
 	if (bCalculateDistance)
 	{
-		//Modifier uses Distance to Target.ca
+		//Modifier uses a Distance to the Target
 		FinalModifier = Direction.Size();
 	}
 
@@ -337,7 +342,7 @@ TPair<FName, float> UDefaultTargetHandler::TrySwitchSocket(float PlayerInput) co
 	const FName& CapturedSocket = GetLockOn()->GetCapturedSocket();
 	UTargetingHelperComponent* const CapturedHC = GetLockOn()->GetHelperComponent();
 
-	TPair<FName, float> BestSocket{CapturedSocket, FLT_MAX};
+	TPair<FName, float> BestSocket{ CapturedSocket, FLT_MAX };
 
 	const TSet<FName>& TargetSockets = CapturedHC->GetSockets();
 
@@ -434,8 +439,8 @@ bool UDefaultTargetHandler::LineOfSightTrace(const AActor* const Target, const F
 
 bool UDefaultTargetHandler::HandleTargetClearing(EUnlockReasonBitmask UnlockReason)
 {
-	GetLockOn()->ClearTargetManual(AutoFindTargetFlags & static_cast<uint8>(UnlockReason));
-	
+	GetLockOn()->ClearTargetManual(AutoFindTargetFlags & static_cast<std::underlying_type_t<EUnlockReasonBitmask>>(UnlockReason));
+
 	return GetLockOn()->IsTargetLocked();
 }
 

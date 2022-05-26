@@ -21,14 +21,11 @@ class LOCKONTARGET_API ULockOnSubobjectBase : public UObject
 	GENERATED_BODY()
 
 public:
-	ULockOnSubobjectBase();
+	ULockOnSubobjectBase() = default;
+	using Parent = ULockOnTargetComponent;
 
 	UFUNCTION(BlueprintPure, Category = LockOnTarget, meta = (BlueprintProtected))
 	ULockOnTargetComponent* GetLockOn() const;
 
 	virtual UWorld* GetWorld() const override;
-
-private:
-	/** Cached LockOnComponent for the quick access. */
-	mutable TWeakObjectPtr<ULockOnTargetComponent> CachedLockOn;
 };

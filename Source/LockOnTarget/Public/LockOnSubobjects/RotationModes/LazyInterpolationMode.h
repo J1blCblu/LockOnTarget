@@ -24,6 +24,7 @@ class LOCKONTARGET_API ULazyInterpolationMode : public UInterpolationMode
 public:
 	ULazyInterpolationMode();
 
+public:
 	/**
 	 * Angle beyond which the interpolation starts.
 	 * Should be > StopInterpAngle.
@@ -50,12 +51,12 @@ public:
 	 * Minimum interpolation speed ratio. The full ratio will be [MinInterpSpeedRatio, 1.f].
 	 * The closer the value is to 1.f, the sharper the interpolation will be in the SmoothingAngleRange.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lazy Interpolation", meta = (ClampMin = 0.05f, ClampMax = 1.f, UIMin = 0.05f, UIMax = 1.f, Units="x"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lazy Interpolation", meta = (ClampMin = 0.01f, ClampMax = 1.f, UIMin = 0.01f, UIMax = 1.f, Units="x"))
 	float MinInterpSpeedRatio;
 
 #if WITH_EDITORONLY_DATA
 
-	/** Intended only for the ControlRotation. Not visualize correctly if Rotation actually clamped by PitchClamp. */
+	/** Intended only for the ControlRotation. */
 	UPROPERTY(EditAnywhere, Category = "Lazy Interpolation")
 	bool bVisualizeOnControlRotation = false;
 #endif
@@ -66,7 +67,6 @@ public:
 public:
 	/** URotationModeBase */
 	virtual FRotator GetRotation_Implementation(const FRotator& CurrentRotation, const FVector& InstigatorLocation, const FVector& TargetLocation, float DeltaTime) override;
-	/** ~URotationModeBase */
 
 protected:
 	UFUNCTION(BlueprintNativeEvent)
@@ -80,6 +80,6 @@ private:
 
 #if WITH_EDITORONLY_DATA
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& Event) override;
-	void DrawDebugInfo() const;
+	void DrawDebugInfo(const FRotator& NewRotation) const;
 #endif
 };

@@ -1,6 +1,7 @@
 // Copyright 2022 Ivan Baktenkov. All Rights Reserved.
 
 using UnrealBuildTool;
+using System.IO;
 
 public class LockOnTarget : ModuleRules
 {
@@ -9,6 +10,7 @@ public class LockOnTarget : ModuleRules
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
 		//https://forums.unrealengine.com/t/how-to-compile-in-non-unity-mode/94863/5
+		//Add in *project*Editor.Target.cs
 		//bUseUnityBuild = false;
 		//bUsePCHFiles = false;
 
@@ -16,45 +18,42 @@ public class LockOnTarget : ModuleRules
 		PublicDefinitions.Add("LOC_INSIGHTS = 0");
 
 		PublicIncludePaths.AddRange(
-			new string[] {
-				// ... add public include paths required here ...
+			new string[] 
+			{
+				Path.Combine(ModuleDirectory, "Public/Utilities"),
 			}
 			);
 				
-		
 		PrivateIncludePaths.AddRange(
-			new string[] {
-				// ... add other private include paths required here ...
+			new string[] 
+			{
+
 			}
 			);
 			
-		
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core",
-				// ... add other public dependencies that you statically link with here ...
-			}
+                "Core",
+                "CoreUObject",
+                "Engine",
+            }
 			);
 			
-		
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"CoreUObject",
-				"Engine",
-				"Slate",
-				"SlateCore",
+				//"Slate",
+				//"SlateCore",
 				"UMG",
-				// ... add private dependencies that you statically link with here ...	
+				"Projects",
 			}
 			);
-		
-		
-		DynamicallyLoadedModuleNames.AddRange(
+
+        DynamicallyLoadedModuleNames.AddRange(
 			new string[]
 			{
-				// ... add any modules that your module loads dynamically here ...
+
 			}
 			);
 	}

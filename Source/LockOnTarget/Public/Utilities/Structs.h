@@ -2,12 +2,13 @@
 
 #pragma once
 
+#include "CoreMinimal.h"
 #include "Structs.generated.h"
 
 class UTargetingHelperComponent;
 
 USTRUCT(BlueprintType)
-struct FTargetInfo
+struct LOCKONTARGET_API FTargetInfo
 {
 	GENERATED_BODY()
 

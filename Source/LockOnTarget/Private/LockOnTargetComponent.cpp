@@ -1,12 +1,16 @@
 // Copyright 2022 Ivan Baktenkov. All Rights Reserved.
 
 #include "LockOnTargetComponent.h"
-#include "Camera/PlayerCameraManager.h"
+#include "TargetingHelperComponent.h"
 #include "LockOnSubobjects/RotationModes/RotationModeBase.h"
 #include "LockOnSubobjects/TargetHandlers/TargetHandlerBase.h"
+
+#include "Camera/PlayerCameraManager.h"
 #include "Net/UnrealNetwork.h"
-#include "TargetingHelperComponent.h"
 #include "TimerManager.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 
 ULockOnTargetComponent::ULockOnTargetComponent()
 	: bCanCaptureTarget(true)
@@ -45,14 +49,19 @@ void ULockOnTargetComponent::EndPlay(const EEndPlayReason::Type Reason)
 	Super::EndPlay(Reason);
 
 	ClearTargetNative();
+
+	if(GetWorld())
+	{
+		GetWorld()->GetTimerManager().ClearAllTimersForObject(this);
+	}
 }
 
 void ULockOnTargetComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME_CONDITION(ULockOnTargetComponent, Rep_TargetInfo, COND_SkipOwner);
-	DOREPLIFETIME_CONDITION(ULockOnTargetComponent, TargetingDuration, COND_SkipOwner);
+	DOREPLIFETIME_CONDITION(ThisClass, Rep_TargetInfo, COND_SkipOwner);
+	DOREPLIFETIME_CONDITION(ThisClass, TargetingDuration, COND_SkipOwner);
 }
 
 /*******************************************************************************************/
@@ -113,9 +122,7 @@ void ULockOnTargetComponent::ProcessAnalogInput()
 
 	if (InputBuffer.Size() > GetInputBufferThreshold())
 	{
-		float TrigonometricInput = ULOTC_BPLibrary::GetTrigonometricAngle2D(InputBuffer);
-
-		SwitchTarget(TrigonometricInput);
+		SwitchTarget(InputBuffer);
 
 		bInputFrozen = true;
 		ClearInputBuffer();
@@ -125,13 +132,6 @@ void ULockOnTargetComponent::ProcessAnalogInput()
 			//Timer without a callback, 'cause we only need the fact that the timer is in progress.
 			TimerManager.SetTimer(SwitchDelayHandler, SwitchDelay, false);
 		}
-
-#if WITH_EDITORONLY_DATA
-		if (bShowPlayerInput)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Black, FString::Printf(TEXT("PlayerInput: %.2f deg."), TrigonometricInput), true, FVector2D(1.15f));
-		}
-#endif
 	}
 	else
 	{
@@ -180,8 +180,8 @@ void ULockOnTargetComponent::FindTarget()
 	if (IsValid(TargetHandlerImplementation))
 	{
 #if LOC_INSIGHTS
-		TRACE_BOOKMARK(TEXT("LOC_PerformFindTarget"));
-		SCOPED_NAMED_EVENT(LOC_TargetFinding, FColor::Red);
+		TRACE_BOOKMARK(TEXT("LOT_PerformFindTarget"));
+		SCOPED_NAMED_EVENT(LOT_TargetFinding, FColor::Red);
 #endif
 		
 		FTargetInfo NewTargetInfo = TargetHandlerImplementation->FindTarget();
@@ -197,13 +197,13 @@ void ULockOnTargetComponent::FindTarget()
 	}
 }
 
-bool ULockOnTargetComponent::SwitchTarget(float PlayerInput)
+bool ULockOnTargetComponent::SwitchTarget(FVector2D PlayerInput)
 {
 	if (IsValid(TargetHandlerImplementation))
 	{
 #if LOC_INSIGHTS
-		TRACE_BOOKMARK(TEXT("LOC_PerformSwitchTarget"));
-		SCOPED_NAMED_EVENT(LOC_SwitchingTarget, FColor::Red);
+		TRACE_BOOKMARK(TEXT("LOT_PerformSwitchTarget"));
+		SCOPED_NAMED_EVENT(LOT_SwitchingTarget, FColor::Red);
 #endif
 
 		FTargetInfo NewTargetInfo;
@@ -261,9 +261,9 @@ void ULockOnTargetComponent::SetLockOnTargetManual(AActor* NewTarget, const FNam
 	}
 }
 
-bool ULockOnTargetComponent::SwitchTargetManual(float TrigonometricInput)
+bool ULockOnTargetComponent::SwitchTargetManual(FVector2D PlayerInput)
 {
-	return bCanCaptureTarget && IsTargetLocked() && SwitchTarget(TrigonometricInput);
+	return bCanCaptureTarget && IsTargetLocked() && SwitchTarget(PlayerInput);
 }
 
 void ULockOnTargetComponent::ClearTargetManual(bool bAutoFindNewTarget)
@@ -342,7 +342,7 @@ void ULockOnTargetComponent::OnTargetInfoUpdated()
 void ULockOnTargetComponent::SetLockOnTargetNative()
 {
 #if LOC_INSIGHTS
-	SCOPED_NAMED_EVENT(LOC_SetLock, FColor::Emerald);
+	SCOPED_NAMED_EVENT(LOT_SetLock, FColor::Emerald);
 	TRACE_BOOKMARK(TEXT("Target Locked: %s"), *GetNameSafe(Rep_TargetInfo.GetActor()));
 #endif
 
@@ -368,7 +368,7 @@ void ULockOnTargetComponent::ClearTargetNative()
 	{
 #if LOC_INSIGHTS
 		TRACE_BOOKMARK(TEXT("Target unlocked: %s"), *GetNameSafe(GetTarget()));
-		SCOPED_NAMED_EVENT(LOC_ClearTarget, FColor::Silver);
+		SCOPED_NAMED_EVENT(LOT_ClearTarget, FColor::Silver);
 #endif
 
 		if (bDisableTickWhileUnlocked)
@@ -395,12 +395,12 @@ void ULockOnTargetComponent::ClearTargetNative()
 void ULockOnTargetComponent::UpdateTargetSocket()
 {
 #if LOC_INSIGHTS
-	TRACE_BOOKMARK(TEXT("LOC_SocketChanged %s"), *Rep_TargetInfo.SocketForCapturing.ToString());
-	SCOPED_NAMED_EVENT(LOC_SocketChanged, FColor::Yellow);
+	TRACE_BOOKMARK(TEXT("LOT_SocketChanged %s"), *Rep_TargetInfo.SocketForCapturing.ToString());
+	SCOPED_NAMED_EVENT(LOT_SocketChanged, FColor::Yellow);
 #endif
 
 	PrivateTargetInfo.SocketForCapturing = Rep_TargetInfo.SocketForCapturing;
-	GetHelperComponent()->UpdateWidget(GetCapturedSocket(), this);
+	GetHelperComponent()->CaptureTarget(this, GetCapturedSocket());
 }
 
 /*******************************************************************************************/
@@ -412,12 +412,12 @@ void ULockOnTargetComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 #if LOC_INSIGHTS
-	SCOPED_NAMED_EVENT(LOC_Tick, FColor::Orange);
+	SCOPED_NAMED_EVENT(LOT_Tick, FColor::Orange);
 #endif
 
 	if (IsTargetLocked() && CanContinueTargeting())
 	{
-		if (GetOwner()->HasAuthority() || IsOwnerLocallyControlled())
+		if (GetOwner()->GetLocalRole() > ROLE_SimulatedProxy /*GetOwner()->HasAuthority() || IsOwnerLocallyControlled()*/)
 		{
 			TargetingDuration += DeltaTime;
 		}
@@ -429,7 +429,7 @@ void ULockOnTargetComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 			//Process the input only for the locally controlled Owner.
 			ProcessAnalogInput();
 
-			//Update the ControlRotation locally and it'll be replicated to the server via CMC.
+			//Update the ControlRotation locally and it'll be replicated to the server automatically.
 			TickControlRotationCalc(DeltaTime, FocusLocation);
 
 #if WITH_EDITORONLY_DATA
@@ -447,7 +447,7 @@ void ULockOnTargetComponent::TickControlRotationCalc(float DeltaTime, const FVec
 {
 	if (IsValid(ControlRotationModeConfig) && ControlRotationModeConfig->bIsEnabled)
 	{
-		AController* Controller = GetController();
+		AController* const Controller = GetController();
 		const FRotator& ControlRotation = Controller->GetControlRotation();
 		const FVector LocationFrom = GetCameraLocation();
 		const FRotator NewRotation = ControlRotationModeConfig->GetRotation(ControlRotation, LocationFrom, TargetLocation, DeltaTime);
@@ -542,6 +542,29 @@ FVector ULockOnTargetComponent::GetCameraRightVector() const
 FVector ULockOnTargetComponent::GetCameraForwardVector() const
 {
 	return GetCameraRotation().Vector();
+}
+
+void ULockOnTargetComponent::SetTargetHandler(UTargetHandlerBase* NewTargetHandler)
+{
+	if(IsValid(NewTargetHandler))
+	{
+		TargetHandlerImplementation = NewTargetHandler;
+
+		if(IsTargetLocked())
+		{
+			TargetHandlerImplementation->OnTargetLockedNative();
+		}
+	}
+}
+
+void ULockOnTargetComponent::SetTickWhileUnlockedEnabled(bool bTickWhileUnlocked)
+{
+	bDisableTickWhileUnlocked = bTickWhileUnlocked;
+
+	if (bDisableTickWhileUnlocked && !IsTargetLocked())
+	{
+		SetComponentTickEnabled(false);
+	}
 }
 
 /*******************************************************************************************/

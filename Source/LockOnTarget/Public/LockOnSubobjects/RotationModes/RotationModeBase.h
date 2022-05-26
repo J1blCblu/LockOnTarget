@@ -4,6 +4,7 @@
 
 #include "LockOnSubobjects/LockOnSubobjectBase.h"
 #include "Utilities/Enums.h"
+#include <type_traits>
 #include "RotationModeBase.generated.h"
 
 /**
@@ -19,7 +20,9 @@ class LOCKONTARGET_API URotationModeBase : public ULockOnSubobjectBase
 
 public:
 	URotationModeBase();
+	static_assert(TIsSame<std::underlying_type_t<ERot>, uint8>::Value, "URotationModeBase::RotationAxes must be of the same type as the ERot underlying type.");
 
+public:
 	/** Axes applied to returned rotation. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Base Config", meta = (Bitmask, BitmaskEnum = "ERot"))
 	uint8 RotationAxes;
@@ -35,15 +38,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Base Config")
 	bool bIsEnabled = true;
 
-/*******************************************************************************************/
-/*******************************  Class Methods   ******************************************/
-/*******************************************************************************************/
 public:
 	/**
-	 * Used to return the rotation to the LockOnComponent.
+	 * Used to return the rotation to the LockOnTargetComponent.
 	 * 
 	 * @param CurrentRotation - Current control/owner's rotation.
-	 * @param InstigatorLocation - LockOnComponent's camera/owner location.
+	 * @param InstigatorLocation - LockOnTargetComponent's camera/owner location.
 	 * @param TargetLocation - Captured location of the Target socket with the world offset.
 	 * @param DeltaTime - WorldDeltaTime.
 	 * @return - Rotation applied to the Control/Owner rotation.
@@ -56,22 +56,11 @@ protected:
 	UFUNCTION(BlueprintPure, Category = "LockOnTarget|Rotation Mode", meta = (BlueprintProtected))
 	FRotator GetRotationToTarget(const FVector& LocationFrom, const FVector& LocationTo) const;
 
-	UFUNCTION(BlueprintPure, Category = "LockOnTarget|Rotation Mode", meta = (BlueprintProtected))
-	FRotator GetClampedRotationToTarget(const FVector& LocationFrom, const FVector& LocationTo) const;
-
-	UFUNCTION(BlueprintPure, Category = "LockOnTarget|Rotation Mode", meta = (BlueprintProtected))
-	void AddOffsetToRotation(FRotator& Rotator) const;
-
-/*******************************************************************************************/
-/*******************************  Native Methods   *****************************************/
-/*******************************************************************************************/
-protected:
 	/** Update only required axes in NewRotation. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTarget|Rotation Mode", meta = (BlueprintProtected))
 	void ApplyRotationAxes(const FRotator& CurrentRotation, FRotator& NewRotation) const;
 
-	/** Clamp the pitch value. */
-	void ClampPitch(FRotator& Rotation) const;
-
+protected:
 #if WITH_EDITORONLY_DATA
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& Event) override;
 #endif

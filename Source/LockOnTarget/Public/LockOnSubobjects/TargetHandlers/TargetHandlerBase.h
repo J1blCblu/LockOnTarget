@@ -19,7 +19,7 @@ class LOCKONTARGET_API UTargetHandlerBase : public ULockOnSubobjectBase
 	GENERATED_BODY()
 
 public:
-	UTargetHandlerBase();
+	UTargetHandlerBase() = default;
 	friend ULockOnTargetComponent;
 
 	/**
@@ -45,7 +45,7 @@ public:
 	 * @return - was switch successful (a new Target or a new socket) otherwise should be false.
 	 */
 	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Target Handler Base")
-	bool SwitchTarget(FTargetInfo& TargetInfo, float PlayerInput);
+	bool SwitchTarget(FTargetInfo& TargetInfo, FVector2D PlayerInput);
 
 	/** Can the Target be locked until the next update. */
 	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Target Handler Base")
@@ -63,7 +63,7 @@ protected:
 /*******************************************************************************************/
 /*******************************  Native   *************************************************/
 /*******************************************************************************************/
-private:
+protected:
 	/** Only should be called from the LockOnTargetComponent. */
 	virtual void OnTargetLockedNative();
 

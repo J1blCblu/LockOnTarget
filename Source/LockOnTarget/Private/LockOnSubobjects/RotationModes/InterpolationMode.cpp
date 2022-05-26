@@ -11,8 +11,7 @@ UInterpolationMode::UInterpolationMode()
 
 FRotator UInterpolationMode::GetRotation_Implementation(const FRotator& CurrentRotation, const FVector& InstigatorLocation, const FVector& TargetLocation, float DeltaTime)
 {
-	FRotator NewRotation = GetClampedRotationToTarget(InstigatorLocation, TargetLocation);
-	NewRotation = FMath::RInterpTo(CurrentRotation, NewRotation, DeltaTime, InterpolationSpeed);
+	FRotator NewRotation = FMath::RInterpTo(CurrentRotation, GetRotationToTarget(InstigatorLocation, TargetLocation), DeltaTime, InterpolationSpeed);
 	ApplyRotationAxes(CurrentRotation, NewRotation);
 
 	return NewRotation;

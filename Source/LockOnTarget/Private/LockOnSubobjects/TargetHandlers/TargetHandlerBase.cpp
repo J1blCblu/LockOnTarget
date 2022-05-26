@@ -3,18 +3,13 @@
 #include "LockOnSubobjects/TargetHandlers/TargetHandlerBase.h"
 #include "Utilities/Structs.h"
 
-UTargetHandlerBase::UTargetHandlerBase()
-{
-
-}
-
 FTargetInfo UTargetHandlerBase::FindTarget_Implementation()
 {
 	unimplemented();
 	return {};
 }
 
-bool UTargetHandlerBase::SwitchTarget_Implementation(FTargetInfo& TargetInfo, float PlayerInput)
+bool UTargetHandlerBase::SwitchTarget_Implementation(FTargetInfo& TargetInfo, FVector2D PlayerInput)
 {
 	unimplemented();
 	TargetInfo.Reset();

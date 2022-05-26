@@ -4,6 +4,7 @@
 
 #include "LockOnSubobjects/TargetHandlers/TargetHandlerBase.h"
 #include "Utilities/Enums.h"
+#include <type_traits>
 #include "DefaultTargetHandler.generated.h"
 
 struct FTargetInfo;
@@ -12,7 +13,7 @@ class UTargetingHelperComponent;
 
 /**
  * Native default implementation of TargetHandler based on calculation and comparison of Targets modifiers.
- * The best Target will have least modifier.
+ * The best Target will have the least modifier.
  * 
  * You can override CalculateTargetModifier() to custom sort a set of Targets.
  * @see UTargetHandlerBase.
@@ -24,6 +25,14 @@ class LOCKONTARGET_API UDefaultTargetHandler : public UTargetHandlerBase
 
 public:
 	UDefaultTargetHandler();
+	static_assert(TIsSame<std::underlying_type_t<EUnlockReasonBitmask>, uint8>::Value, "UDefaultTargetHandler::AutoFindTargetFlags must be of the same type as the EUnlockReasonBitmask underlying type.");
+
+public:
+	/** TargetHandlerBase */
+	virtual FTargetInfo FindTarget_Implementation() override;
+	virtual bool SwitchTarget_Implementation(FTargetInfo& TargetInfo, FVector2D PlayerInput) override;
+	virtual bool CanContinueTargeting_Implementation() override;
+	virtual void OnTargetUnlockedNative() override;
 
 public:
 	/** 
@@ -169,9 +178,9 @@ public:
 
 #endif
 
-	/*******************************************************************************************/
-	/*******************************  BP Overridable  ******************************************/
-	/*******************************************************************************************/
+/*******************************************************************************************/
+/*******************************  BP Overridable  ******************************************/
+/*******************************************************************************************/
 protected:
 	/**
 	 * Used to find the best Target from the sorted Targets.
@@ -198,20 +207,9 @@ protected:
 	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Default Target Handler")
 	bool IsTargetableCustom(UTargetingHelperComponent* HelperComponent) const;
 
-	/*******************************************************************************************/
-	/******************************* Target Handler Interface **********************************/
-	/*******************************************************************************************/
-public:
-	/** TargetHandlerBase */
-	virtual FTargetInfo FindTarget_Implementation() override;
-	virtual bool SwitchTarget_Implementation(FTargetInfo& TargetInfo, float PlayerInput) override;
-	virtual bool CanContinueTargeting_Implementation() override;
-	virtual void OnTargetUnlockedNative() override;
-	/** ~TargetHandlerBase */
-
-	/*******************************************************************************************/
-	/*******************************  Native   *************************************************/
-	/*******************************************************************************************/
+/*******************************************************************************************/
+/*******************************  Native   *************************************************/
+/*******************************************************************************************/
 private:
 	/** Finding target */
 	FTargetInfo FindTargetNative(float PlayerInput = -1.f) const;
@@ -220,7 +218,6 @@ private:
 
 	bool SwitchTargetNative(FTargetInfo& TargetInfo, float PlayerInput) const;
 	TPair<FName, float> TrySwitchSocket(float PlayerInput) const;
-	/** ~Finding target */
 
 private:
 	/** Line Of Sight handling */
@@ -229,12 +226,10 @@ private:
 	virtual void StopLineOfSightTimer();
 	virtual void OnLineOfSightFail();
 	bool LineOfSightTrace(const AActor* const Target, const FVector& Location) const;
-	/** ~Line Of Sight handling */
 
 private:
 	/** Helpers methods */
 	bool HandleTargetClearing(EUnlockReasonBitmask UnlockReason);
-	/** ~Helpers methods */
 
 /*******************************************************************************************/
 /******************************* Debug and Editor Only *************************************/

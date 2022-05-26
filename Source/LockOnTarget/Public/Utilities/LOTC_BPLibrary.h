@@ -7,7 +7,7 @@
 #include "LOTC_BPLibrary.generated.h"
 
 UCLASS()
-class ULOTC_BPLibrary : public UBlueprintFunctionLibrary
+class LOCKONTARGET_API ULOTC_BPLibrary : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 
@@ -44,7 +44,7 @@ public:
 
 	/** Returns an array of the world locations of the box's vertices. */
 	UFUNCTION(BlueprintPure, Category = LockOnTarget)
-	static void GetBoxVertices(const FVector& BoxOrigin, const FVector& BoxExtents, TArray<FVector>& Verices);
+	static void GetBoxVertices(const FVector& BoxOrigin, const FVector& BoxExtents, TArray<FVector>& Vertices);
 
 	/**
 	 * Determines if the location is on the screen.

@@ -3,23 +3,12 @@
 #include "LockOnSubobjects/LockOnSubobjectBase.h"
 #include "LockOnTargetComponent.h"
 
-
-ULockOnSubobjectBase::ULockOnSubobjectBase()
-	: CachedLockOn(nullptr)
-{
-}
-
 ULockOnTargetComponent* ULockOnSubobjectBase::GetLockOn() const
 {
-	if (!CachedLockOn.IsValid())
-	{
-		CachedLockOn = CastChecked<ULockOnTargetComponent>(GetOuter());
-	}
-
-	return CachedLockOn.Get();
+	return StaticCast<ULockOnTargetComponent*>(GetOuter());
 }
 
 UWorld* ULockOnSubobjectBase::GetWorld() const
 {
-	return (GetOuter() && (!GIsEditor || GIsPlayInEditorWorld)) ? GetOuter()->GetWorld() : nullptr;
+	return (IsValid(GetOuter()) && (!GIsEditor || GIsPlayInEditorWorld)) ? GetOuter()->GetWorld() : nullptr;
 }

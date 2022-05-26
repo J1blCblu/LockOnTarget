@@ -4,13 +4,17 @@
 
 #include "Components/ActorComponent.h"
 #include "CoreMinimal.h"
+
 #include "Utilities/Structs.h"
+
 #include "LockOnTargetComponent.generated.h"
 
 class UTargetingHelperComponent;
 class AController;
 class APlayerController;
 class AActor;
+class UTargetHandlerBase;
+class URotationModeBase;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTargetLocked, AActor*, LockedActor);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnTargetNotFound);
@@ -55,18 +59,20 @@ protected:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
-	//~UActorComponent
 
+/*******************************************************************************************/
+/*******************************  Class config  ********************************************/
+/*******************************************************************************************/
 public:
 	/** Can this Component capture Targets. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings")
 	bool bCanCaptureTarget;
 
-protected:
+private:
 	/** Implementation of handling Target (find, switch, maintenance). */
-	UPROPERTY(BlueprintReadOnly, EditAnywhere, Instanced, Category = "Default Settings")
-	TObjectPtr<class UTargetHandlerBase> TargetHandlerImplementation;
-
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Default Settings")
+	TObjectPtr<UTargetHandlerBase> TargetHandlerImplementation;
+	
 public:
 	/** 
 	 * Rotation mode for the control Rotation. 
@@ -77,7 +83,7 @@ public:
 	 *	(e.g. via OnTargetLocked/OnTargetUnlocked delegates)
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced, Category = "Lock Settings")
-	TObjectPtr<class URotationModeBase> ControlRotationModeConfig;
+	TObjectPtr<URotationModeBase> ControlRotationModeConfig;
 
 	/** 
 	 * Rotation mode for Owner Rotation.
@@ -88,12 +94,14 @@ public:
 	 *	(e.g. via OnTargetLocked/OnTargetUnlocked delegates)
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced, Category = "Lock Settings")
-	TObjectPtr<class URotationModeBase> OwnerRotationModeConfig;
+	TObjectPtr<URotationModeBase> OwnerRotationModeConfig;
 
+private:
 	/** Should the component tick while the no Target is locked. */
-	UPROPERTY(AdvancedDisplay, EditAnywhere, Category = "Lock Settings")
+	UPROPERTY(AdvancedDisplay, EditDefaultsOnly, Category = "Lock Settings")
 	bool bDisableTickWhileUnlocked;
 
+public:
 	/**
 	 * When the InputBuffer overflows the threshold by the player's input, the switch method will be called.
 	 * Player's input will be converted to a 2D direction vector.
@@ -158,19 +166,31 @@ public:
 	float UnfreezeThreshold;
 
 #if WITH_EDITORONLY_DATA
-	
+	//@TODO: Maybe move all debug settings to project/editor settings.
+public:
 	/** Display some information about the state of the Targeting. */
 	UPROPERTY(EditDefaultsOnly, Category = "Debug")
 	bool bShowTargetInfo = false;
 
-	/** Display the player's trigonometric input. */
-	UPROPERTY(EditDefaultsOnly, Category = "Debug")
-	bool bShowPlayerInput = false;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (HideAlphaChannel, EditCondition = "bShowPlayerInput || bShowTargetInfo", EditConditionHides))
+	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (HideAlphaChannel, EditCondition = "bShowTargetInfo", EditConditionHides))
 	FColor DebugInfoColor = FColor::Black;
-
 #endif
+
+/*******************************************************************************************/
+/*******************************  Accessors   **********************************************/
+/*******************************************************************************************/
+public:
+	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Accessors")
+	void SetTargetHandler(UTargetHandlerBase* NewTargetHandler);
+
+	UFUNCTION(BlueprintPure, Category = "Lock On Target Component|Accessors")
+	UTargetHandlerBase* GetTargetHandler() const { return TargetHandlerImplementation; }
+
+	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Accessors")
+	void SetTickWhileUnlockedEnabled(bool bTickWhileUnlocked = false);
+
+	UFUNCTION(BlueprintPure, Category = "Lock On Target Component|Accessors")
+	bool IsTickWhileUnlockedEnabled() const { return bDisableTickWhileUnlocked; }
 
 /*******************************************************************************************/
 /*******************************  Delegates  ***********************************************/
@@ -206,7 +226,7 @@ public:
 
 	/** Manual Target switching. Useful for custom input processing. */
 	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Manual Handling")
-	bool SwitchTargetManual(float TrigonometricInput);
+	bool SwitchTargetManual(FVector2D PlayerInput);
 
 	/** Manual Target capturing. Useful for custom input processing. */
 	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Manual Handling", meta = (AutoCreateRefTerm = "Socket"))
@@ -254,6 +274,7 @@ protected:
 /*******************************************************************************************/
 private:
 	//Information about the captured Target. Contains TargetingHelperComponent and Socket.
+	UPROPERTY(Transient)
 	FTargetInfo PrivateTargetInfo;
 
 	//Has this component captured the Target.
@@ -275,10 +296,8 @@ private:
 	void OnTargetInfoUpdated();
 
 	//Sends the desired Target to the server.
-	UFUNCTION(Server, Reliable)
+	UFUNCTION(Server, Reliable /*, WithValidation */)
 	void Server_UpdateTargetInfo(const FTargetInfo& TargetInfo);
-
-	/** ~Network. */
 
 private:
 	/** Capturing the Target. */
@@ -295,8 +314,6 @@ private:
 	//Called to change the Target's socket (if the Target has > 1 sockets).
 	virtual void UpdateTargetSocket();
 	
-	/** ~Capturing the Target. */
-
 private:
 	/** Finding and Switching. */
 	
@@ -304,12 +321,10 @@ private:
 	virtual void FindTarget();
 
 	//Called when the Owner performs to switch the Target.
-	virtual bool SwitchTarget(float PlayerInput);
+	virtual bool SwitchTarget(FVector2D PlayerInput);
 
 	//Called during tick to check the Target validity.
 	bool CanContinueTargeting() const;
-	
-	/** ~Finding and Switching. */
 
 private:
 	/** Processing Input. */
@@ -322,13 +337,11 @@ private:
 	void ProcessAnalogInput();
 	bool CanInputBeProcessed(float PlayerInput) const;
 	void ClearInputBuffer();
-	/** ~Processing Input. */
 
 private:
 	/** Tick calculations. */
 	void TickControlRotationCalc(float DeltaTime, const FVector& TargetLocation);
 	void TickOwnerRotationCalc(float DeltaTime, const FVector& TargetLocation);
-	/** ~Tick calculations. */
 	
 public:
 	/**  Helpers Methods. */
@@ -343,7 +356,6 @@ public:
 	FVector GetCameraUpVector() const;
 	FVector GetCameraForwardVector() const;
 	FVector GetCameraRightVector() const;
-	/** ~Helpers Methods. */
 
 /*******************************************************************************************/
 /******************************* Debug and Editor Only  ************************************/

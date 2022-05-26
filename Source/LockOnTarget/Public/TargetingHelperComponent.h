@@ -4,8 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "Utilities/Enums.h"
 #include "Curves/CurveFloat.h"
+
+#include "Utilities/Enums.h"
+
 #include "TargetingHelperComponent.generated.h"
 
 class ULockOnTargetComponent;
@@ -13,6 +15,8 @@ class FHelperVisualizer;
 class UMeshComponent;
 class USceneComponent;
 class AActor;
+class UWidgetComponent;
+class UUserWidget;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnOwnerCaptured, ULockOnTargetComponent*, Invader, const FName&, Socket);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnOwnerReleased, ULockOnTargetComponent*, OldInvader);
@@ -36,7 +40,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnOwnerReleased, ULockOnTargetCompo
  * 
  * @see ULockOnTargetComponent.
  */
-
 UCLASS(Blueprintable, ClassGroup = (LockOnTarget), HideCategories = (Components, Activation, ComponentTick, Cooking, Sockets, Collision), meta = (BlueprintSpawnableComponent))
 class LOCKONTARGET_API UTargetingHelperComponent : public UActorComponent
 {
@@ -51,7 +54,6 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(EEndPlayReason::Type Reason) override;
 	virtual void InitializeComponent() override;
-	//~UActorComponent
 
 public:
 	/** 
@@ -64,18 +66,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings")
 	bool bCanBeTargeted;
 
-protected:
+private:
 	/** 
-	 * Provide the LockOnTargetComponent the proper mesh component for finding the Sockets and the Widget attachment.
-	 * If the mesh component is invalid or None then will try to find the first MeshComponent in the Owner's components hierarchy.
+	 * Provide the LockOnTargetComponent a proper mesh component for finding Sockets and Widget attachment.
+	 * If the mesh component is None then will try to find the first MeshComponent in the Owner's components hierarchy.
+	 * If the mesh component doesn't exists then will be used root component.
 	 */
 	UPROPERTY(EditAnywhere, Category = "Default Settings")
 	FName MeshName;
-	
+
 	/** 
 	 * Sockets for capturing.
 	 * If num == 0 then the Target can't be captured.
-	 * NAME_None will attach the widget to the root component.
+	 * 'None' will attach the widget to the root component.
 	 * 
 	 * Due to performance reasons Sockets aren't validated!
 	 */
@@ -83,7 +86,7 @@ protected:
 	TSet<FName> Sockets;
 
 public:
-	/** Target capture radius. Should be < Lost radius. */
+	/** Target capture radius. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 50.f, UIMin = 50.f, Units="cm"))
 	float CaptureRadius;
 
@@ -107,27 +110,24 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Target Offset", meta = (EditCondition = "OffsetType == EOffsetType::EAdaptiveCurve", EditConditionHides, XAxisName="Distance", YAxisName="Height offset"))
 	FRuntimeFloatCurve HeightOffsetCurve;
 
-protected:
 	/** Should the Target be marked with the Widget which is attached to the Socket. */
 	UPROPERTY(EditAnywhere, Category = "Widget")
 	bool bEnableWidget;
 
-public:
 	/** Widget Class. Safe to fill and don't use. Uses the soft class and loads only if it's needed. */
 	UPROPERTY(EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget", EditConditionHides))
-	TSoftClassPtr<class UUserWidget> WidgetClass;
+	TSoftClassPtr<UUserWidget> WidgetClass;
 
 	/** Offset is applied to the Widget. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget", meta = (EditCondition = "bEnableWidget", EditConditionHides))
 	FVector WidgetOffset;
 
-	/** Load the Widget class async, otherwise sync. */
+	/** Load the Widget class async, otherwise sync. Note: AssetManager should be specified in project settings. */
 	UPROPERTY(AdvancedDisplay, EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget", EditConditionHides))
 	bool bAsyncLoadWidget;
 
 #if WITH_EDITORONLY_DATA
 public:
-	/** Visualize the debug info. */
 	UPROPERTY(EditAnywhere, Category = "Debug")
 	bool bVisualizeDebugInfo = false;
 #endif
@@ -160,6 +160,14 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "TargetingHelper")
 	FVector GetCustomTargetOffset(const ULockOnTargetComponent* Instigator) const;
 	
+	/** Called when the Owner is captured. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "TargetingHelper")
+	void OnCaptured();
+
+	/** Called when the Owner is released. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "TargetingHelper")
+	void OnReleased();
+	
 /*******************************************************************************************/
 /*******************************  BP Methods  **********************************************/
 /*******************************************************************************************/
@@ -184,93 +192,66 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "TargetingHelper", meta = (AutoCreateRefTerm = "Socket"))
 	bool RemoveSocket(const FName& Socket = NAME_None);
 
-	/** Update the MeshComponent for capturing the sockets. */
+	/** Update the MeshComponent for calculating socket location and widget attachment. */
 	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
-	void UpdateMeshComponent(UMeshComponent* NewMeshComponent);
+	void SetMeshComponent(UMeshComponent* NewMeshComponent);
 
 	/** Return the implicit UWidgetComponent. */
 	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
 	UWidgetComponent* GetWidgetComponent() const{ return WidgetComponent;}
 
 /*******************************************************************************************/
-/*******************************  Native Fields  *******************************************/
+/*******************************  Native  **************************************************/
 /*******************************************************************************************/
 private:
-	//All Invaders. Usually 1 in standalone. Multiple in Network.
+	/** All Invaders. Usually 1 in standalone. Multiple in Network. */
 	UPROPERTY(Transient)
 	TSet<ULockOnTargetComponent*> Invaders;
 
-/*******************************************************************************************/
-/*******************************  Native Methods  ******************************************/
-/*******************************************************************************************/
-
-public:
-	/** Class Interface. */
-
-	/** Called to inform the TargetingHelperComponent that it's been Targeted.*/
-	virtual void CaptureTarget(ULockOnTargetComponent* Instigator, const FName& Socket);
-
-	/** Called to inform the TargetingHelperComponent that it's been Released.*/
-	virtual void ReleaseTarget(ULockOnTargetComponent* Instigator);
-
-	/** @return	- World socket location. bWithoffset = true should be with the instigator for the camera space offset. */
-	FVector GetSocketLocation(const FName& Socket, bool bWithOffset = false, const ULockOnTargetComponent* Instigator = nullptr) const;
-
-	/** ~Class Interface. */
-
-public:
-	/** Widget Handling. */
-	void UpdateWidget(const FName& Socket, ULockOnTargetComponent* Instigator);
-	void HideWidget(ULockOnTargetComponent* Instigator);
-
-private:
+	/** Implicit WidgetComponent is used to indicate the Target. */
 	UPROPERTY(Transient)
-	TObjectPtr<class UWidgetComponent> WidgetComponent;
+	TObjectPtr<UWidgetComponent> WidgetComponent;
 
-	void SyncLoadWidget(TSoftClassPtr<UUserWidget>& Widget);
-	void AsyncLoadWidget(TSoftClassPtr<UUserWidget> Widget);
-	/** ~Widget Handling. */
+	/** Cached mesh component is used to calculate a socket location and widget attachment. */
+	TWeakObjectPtr<USceneComponent> OwnerMeshComponent;
+
+	/** WidgetComponent was created during initialization. */
+	uint8 bWidgetWasInitialized : 1;
+
+	/** Init MeshComponent by Name on BeginPlay. */
+	uint8 bWantsMeshInitialization : 1;
+
+public:
+	/** Called to inform the TargetingHelperComponent that it's been Targeted. */
+	virtual void CaptureTarget(ULockOnTargetComponent* const Instigator, const FName& Socket);
+
+	/** Called to inform the TargetingHelperComponent that it's been Released. */
+	virtual void ReleaseTarget(ULockOnTargetComponent* const Instigator);
+
+	/** Returns world location of the socket. bWithoffset = true should be with an Instigator for the offset in the camera space. */
+	FVector GetSocketLocation(const FName& Socket, bool bWithOffset = false, const ULockOnTargetComponent* const Instigator = nullptr) const;
 
 private:
-	/** Cached mesh component is used to calculate the socket location and the widget attachment. */
-	mutable TWeakObjectPtr<UMeshComponent> OwnerMeshComponent;
+	void InitWidgetComponent();
 
-	void InitMeshComponent() const;
-	USceneComponent* GetMeshComponent() const;
-	USceneComponent* GetFirstMeshComponent() const;
+	/** Is the WidgetComponent properly initialized and available now. */
+	bool IsWidgetInitialized() const;
+
+	/** Load and display the widget for the locally controlled Instigator. */
+	void UpdateWidget(const FName& Socket, const ULockOnTargetComponent* const Instigator);
+	
+	/** Hide the widget for the locally controlled Instigator. */
+	void HideWidget(const ULockOnTargetComponent* const Instigator);
+	
+	USceneComponent* GetWidgetParentComponent(const FName& Socket) const;
+	void SetWidgetClassOnWidgetComponent();
+
+private:
+	void InitMeshComponent();
+	UMeshComponent* GetFirstMeshComponent() const;
 	USceneComponent* GetRootComponent() const;
 
 private:
-	void AddOffset(FVector& Location, const ULockOnTargetComponent* Instigator) const;
+	/** Applying an offset to a socket location. */
+	void AddOffset(FVector& Location, const ULockOnTargetComponent* const Instigator) const;
 };
-
-template <typename T>
-T* FindMeshComponentByName(AActor* Actor, FName Name)
-{
-	static_assert(TPointerIsConvertibleFromTo<T, const UMeshComponent>::Value, "'T' template parameter for TryFindMeshComponentByName must be derived from UMeshComponent");
-
-	if (!Actor)
-		return nullptr;
-
-	UActorComponent* Component = nullptr;
-
-	if (Name != NAME_None) //Find MeshComponent by valid Name.
-	{
-		TArray<UActorComponent*> Array;
-		Actor->GetComponents(T::StaticClass(), Array);
-
-		//T* TArray<T,Alloc>::FindByPredicate() => return Type**
-		UActorComponent** FoundComponent = Array.FindByPredicate([&Name](const UActorComponent* Comp)
-			{ return *Comp->GetName() == Name; });
-
-		Component = FoundComponent ? *FoundComponent : nullptr;
-	}
-
-	if (!Component) //Find first component if argument's name invalid.
-	{
-		Component = Actor->FindComponentByClass<T>();
-	}
-
-	//Cast to template typename.
-	return Cast<T>(Component);
-}

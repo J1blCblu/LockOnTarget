@@ -6,7 +6,6 @@
 
 class LOCKONTARGETEDITOR_API FHelperVisualizer : public FComponentVisualizer
 {
-protected:
+public:
 	virtual void DrawVisualization(const UActorComponent* Component, const FSceneView* SceneView, FPrimitiveDrawInterface* DrawInterface) override;
-
 };
