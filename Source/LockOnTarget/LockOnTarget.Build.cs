@@ -15,7 +15,7 @@ public class LockOnTarget : ModuleRules
 		//bUsePCHFiles = false;
 
 		//Lock On Target Unreal Insights preprocessor definition.
-		PublicDefinitions.Add("LOT_INSIGHTS = 1");
+		PublicDefinitions.Add("LOT_INSIGHTS = 0");
 
 		PublicIncludePaths.AddRange(
 			new string[] 
