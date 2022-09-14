@@ -4,10 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "Curves/CurveFloat.h"
-
-#include "Utilities/Enums.h"
-
 #include "TargetingHelperComponent.generated.h"
 
 class ULockOnTargetComponent;
@@ -15,32 +11,34 @@ class FHelperVisualizer;
 class UMeshComponent;
 class USceneComponent;
 class AActor;
-class UWidgetComponent;
 class UUserWidget;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnOwnerCaptured, ULockOnTargetComponent*, Invader, const FName&, Socket);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnOwnerReleased, ULockOnTargetComponent*, OldInvader);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnOwnerCaptured, class ULockOnTargetComponent*, Invader, FName, Socket);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnOwnerReleased, class ULockOnTargetComponent*, OldInvader);
+
+/** Determines focus point type. */
+UENUM(BlueprintType)
+enum class EFocusPoint : uint8
+{
+	Default			UMETA(ToolTip = "The captured socket's world location will be used."),
+	CustomSocket	UMETA(ToolTip = "The custom socket's world location will be used."),
+	Custom			UMETA(ToolTip = "The GetCustomFocusPoint() implementation will be called. ")
+};
 
 /**
- * Used by the LockOnTargetComponent to capture and provide specific information about the Target.
+ * Represents the Target that the LockOnTargetComponent can capture in addition to a specified Socket.
+ * Has all component's benefits and acts like a Target specific storage.
  * 
- * Some features:
- *  - Can be added to any AActor subclass (also during runtime).
- *	- Customizable settings for each Target.
- *	- Targets can have multiple sockets (e.g. head, body, calf, etc.).
- *  - Add custom rules for capturing the target (override the CanBeTargeted() method, e.g. don't capture 'allies').
- *  - Add and remove sockets at runtime.
- *  - Determine the mesh component by name.
- *  - Various useful information and methods that may be needed for the Target.
- *  - Implicitly adds a UWidgetComponent (use the GetWidgetComponent() to access it).
- * 
+ * Network Design:
  * Is not replicated directly. Invaders are added by the LockOnTargetComponent which is replicated.
- * Also, the LockOnTargetComponent finds the Target locally and then notifies the server which Target and Sockets are captured.
- * Due to this every state update must be done using RPCs or leave the Component state static.
+ * The LockOnTargetComponent finds the Target locally and then notifies the server which Target and Socket are captured.
+ * This means that the HelperComponent's state shouldn't be changed on the server, instead a client RPC or replicated systems callbacks should be used.
+ * For example, don't set the bCanBeCaptured to false on the server when the Target becomes 'dead'.
+ * Mark it with a something like 'health system's (which is probably replicated) OnDead event that is called on all clients.
  * 
- * @see ULockOnTargetComponent.
+ * @see ULockOnTargetComponent, UDefaultTargetHandler.
  */
-UCLASS(Blueprintable, ClassGroup = (LockOnTarget), HideCategories = (Components, Activation, ComponentTick, Cooking, Sockets, Collision), meta = (BlueprintSpawnableComponent))
+UCLASS(Blueprintable, ClassGroup = (LockOnTarget), HideCategories = (Components, Activation, ComponentTick, Cooking, Sockets, Collision), meta = (BlueprintSpawnableComponent, ChildCannotTick))
 class LOCKONTARGET_API UTargetingHelperComponent : public UActorComponent
 {
 	GENERATED_BODY()
@@ -49,136 +47,123 @@ public:
 	UTargetingHelperComponent();
 	friend FHelperVisualizer;
 
-protected:
-	// UActorComponent
-	virtual void BeginPlay() override;
-	virtual void EndPlay(EEndPlayReason::Type Reason) override;
-	virtual void InitializeComponent() override;
-
 public:
 	/** 
-	 * Can the owner be captured by the LockOnTargetComponent.
-	 * (e.g. registering the owner's death without destroying it by GC).
-	 * 
-	 * Also, the method CanBeTargeted() can be overridden to register a custom capture state.
-	 * (e.g. register 'team system'. Don't capture 'allies').
+	 * Can the Target be captured by the LockOnTargetComponent (e.g. register the Target's death by setting the value to false).
+	 * The method CanBeCapturedCustom() can be overridden to register a custom capture state (e.g. don't capture teammates).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings")
-	bool bCanBeTargeted;
+	bool bCanBeCaptured;
 
 private:
-	/** 
-	 * Provide the LockOnTargetComponent a proper mesh component for finding Sockets and Widget attachment.
-	 * If the mesh component is None then will try to find the first MeshComponent in the Owner's components hierarchy.
-	 * If the mesh component doesn't exists then will be used root component.
-	 */
-	UPROPERTY(EditAnywhere, Category = "Default Settings")
+	/** Provides the LockOnTargetComponent a proper mesh component for finding Sockets and Widget attachment. If None then root component will be used. */
+	UPROPERTY(EditAnywhere, Category = "Default Settings", meta = (GetOptions = "GetAvailableMeshes"))
 	FName MeshName;
 
-	/** 
-	 * Sockets for capturing.
-	 * If num == 0 then the Target can't be captured.
-	 * 'None' will attach the widget to the root component.
-	 * 
-	 * Due to performance reasons Sockets aren't validated!
-	 */
-	UPROPERTY(EditAnywhere, Category = "Default Settings")
+	/** Sockets that the LockOnTargetComponent can capture within the Target. If num == 0 then the Target can't be captured. */
+	UPROPERTY(EditAnywhere, Category = "Default Settings", meta = (GetOptions = "GetAvailableSockets"))
 	TSet<FName> Sockets;
 
 public:
 	/** Target capture radius. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 50.f, UIMin = 50.f, Units="cm"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture Radius", meta = (ClampMin = 50.f, UIMin = 50.f, Units="cm"))
 	float CaptureRadius;
 
 	/** Target lost radius offset is added to the CaptureRadius. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, UIMin = 0.f, Units="cm"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture Radius", meta = (ClampMin = 0.f, UIMin = 0.f, Units="cm"))
 	float LostOffsetRadius;
 
 	/** May be helpful to avoid capturing the Target behind the Invader's back (distance is calculated from the camera location). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, UIMin = 0.f, Units="cm"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture Radius", meta = (ClampMin = 0.f, UIMin = 0.f, Units="cm"))
 	float MinimumCaptureRadius;
 
-	/** Custom offset is added to the socket location while the target is locked. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Offset")
-	EOffsetType OffsetType;
+public:
+	/** Specifies the focus point type. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Focus Point")
+	EFocusPoint FocusPoint;
 
-	/** Target offset in the camera space. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Offset", meta = (EditCondition = "OffsetType == EOffsetType::EConstant", EditConditionHides))
-	FVector TargetOffset;
+	/** The custom socket for the focus point. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Focus Point", meta = (GetOptions = "GetAvailableSockets", EditCondition = "FocusPoint == EFocusPoint::CustomSocket", EditConditionHides))
+	FName FocusPointCustomSocket;
 
-	/** Curve distance based target height offset in the camera space. */
-	UPROPERTY(EditAnywhere, Category = "Target Offset", meta = (EditCondition = "OffsetType == EOffsetType::EAdaptiveCurve", EditConditionHides, XAxisName="Distance", YAxisName="Height offset"))
-	FRuntimeFloatCurve HeightOffsetCurve;
+	/** Whether the offset will be applied in camera space or world space. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Focus Point")
+	bool bFocusPointOffsetInCameraSpace;
 
-	/** Should the Target be marked with the Widget which is attached to the Socket. */
+	/** Offset applied to the focus location. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Focus Point")
+	FVector FocusPointOffset;
+
+public:
+	/** Whether the Target wants to display any widget. */
 	UPROPERTY(EditAnywhere, Category = "Widget")
-	bool bEnableWidget;
+	uint8 bWantsDisplayWidget : 1;
 
-	/** Widget Class. Safe to fill and don't use. Uses the soft class and loads only if it's needed. */
-	UPROPERTY(EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget", EditConditionHides))
-	TSoftClassPtr<UUserWidget> WidgetClass;
+	/** Whether the Target wants to display the custom Widget. If null then the default one will be used. */
+	UPROPERTY(EditAnywhere, Category = "Widget", meta = (EditCondition = "bWantsDisplayWidget"))
+	TSoftClassPtr<UUserWidget> CustomWidgetClass;
 
-	/** Offset is applied to the Widget. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget", meta = (EditCondition = "bEnableWidget", EditConditionHides))
-	FVector WidgetOffset;
+	/** Widget relative offset. */
+	UPROPERTY(EditAnywhere, Category = "Widget", meta = (EditCondition = "bWantsDisplayWidget"))
+	FVector WidgetRelativeOffset;
 
-	/** Load the Widget class async, otherwise sync. Note: AssetManager should be specified in project settings. */
-	UPROPERTY(AdvancedDisplay, EditAnywhere, Category = "Widget", meta = (EditCondition = "bEnableWidget", EditConditionHides))
-	bool bAsyncLoadWidget;
-
-#if WITH_EDITORONLY_DATA
-public:
-	UPROPERTY(EditAnywhere, Category = "Debug")
-	bool bVisualizeDebugInfo = false;
-#endif
-
-/*******************************************************************************************/
-/*******************************  Delegates  ***********************************************/
-/*******************************************************************************************/
-public:
-	/** Notifies when the Owner has been targeted. */
-	UPROPERTY(BlueprintAssignable)
+	/** Notifies when the Target is captured by a LockOnTargetComponetn. */
+	UPROPERTY(BlueprintAssignable, Transient)
 	FOnOwnerCaptured OnOwnerCaptured;
 
-	/** Notifies when the Owner has been unlocked. */
-	UPROPERTY(BlueprintAssignable)
+	/** Notifies when the Target is released by a LockOnTargetComponetn. */
+	UPROPERTY(BlueprintAssignable, Transient)
 	FOnOwnerReleased OnOwnerReleased;
 
-/*******************************************************************************************/
-/*******************************  BP Override  *********************************************/
-/*******************************************************************************************/
-public:
+private:
+	/** All Invaders. Usually 1 in standalone. Multiple in Network. */
+	UPROPERTY(Transient)
+	TSet<ULockOnTargetComponent*> Invaders;
+
+	/** Desired mesh component is used to calculate a socket location, focus location, widget attachment, etc. */
+	TWeakObjectPtr<USceneComponent> DesiredMeshComponent;	//Not actually a MeshComponent, cause we may want to store a root component.
+
 	/** 
-	 * Can the owner be captured. By default uses the bCanBeTargeted value.
-	 * BP override method for the custom logic.
-	 * e.g. process the 'team system' for not capturing 'allies'.
+	 * Whether we need to initialize the desired mesh or not. 
+	 * We don't need to use the MeshName in c++, we just can update the mesh via UpdateDesiredMesh() in constructor.
+	 * MeshName is used for convenience in BP.
 	 */
-	UFUNCTION(BlueprintNativeEvent, BlueprintPure, Category = "TargetingHelper")
-	bool CanBeTargeted(ULockOnTargetComponent* Instigator) const;
+	uint8 bWantsMeshInitialization : 1;
 
-	/** Provide the custom Target offset. The OffsetType should be set to the CustomOffset value. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "TargetingHelper")
-	FVector GetCustomTargetOffset(const ULockOnTargetComponent* Instigator) const;
-	
-	/** Called when the Owner is captured. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "TargetingHelper")
-	void OnCaptured();
+public: //UActorComponent overrides.
+	virtual void BeginPlay() override;
+	virtual void EndPlay(EEndPlayReason::Type Reason) override;
 
-	/** Called when the Owner is released. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "TargetingHelper")
-	void OnReleased();
-	
-/*******************************************************************************************/
-/*******************************  BP Methods  **********************************************/
-/*******************************************************************************************/
 public:
-	/** Get all the Invaders that are locked on the Owner. Usually 1 in a standalone game. */
+	/** Whether the HelperComponent can be captured or not. */
+	UFUNCTION(BlueprintCallable, Category = "Targeting Helper")
+	bool CanBeCaptured(const ULockOnTargetComponent* Instigator) const;
+
+	/** Called to inform the Target that it's been captured by the LockOnTargetComponent. */
+	virtual void CaptureTarget(ULockOnTargetComponent* Instigator, FName Socket);
+
+	/** Called to inform the Target that it's been released by the LockOnTargetComponent. */
+	virtual void ReleaseTarget(ULockOnTargetComponent* Instigator);
+
+	/** Returns the Socket world location within the Target's DesiredMesh. */
+	UFUNCTION(BlueprintPure, Category = "Targeting Helper")
+	FVector GetSocketLocation(FName Socket) const;
+
+	/** Returns the focus location. Mostly used by tracking systems. */
+	UFUNCTION(BlueprintPure, Category = "Targeting Helper")
+	FVector GetFocusLocation(const ULockOnTargetComponent* Instigator) const;
+
+	/** Returns the DesiredMesh. */
+	UFUNCTION(BlueprintPure, Category = "Targeting Helper")
+	USceneComponent* GetDesiredMesh() const;
+
+	/** Get all the Invaders that have captured the Target. Usually 1 in a standalone game. */
 	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
 	const TSet<ULockOnTargetComponent*>& GetInvaders() const { return Invaders;}
 
-	/** Whether the Owner is currently Targeted by any Invader.*/
+	/** Whether the Target is captured by any Invader.*/
 	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
-	bool IsTargeted() const { return Invaders.Num() > 0; }
+	bool IsCaptured() const { return Invaders.Num() > 0; }
 
 	/** Get all sockets. */
 	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
@@ -186,72 +171,46 @@ public:
 
 	/** Add a Socket at runtime. */
 	UFUNCTION(BlueprintCallable, Category = "TargetingHelper", meta = (AutoCreateRefTerm = "Socket"))
-	bool AddSocket(const FName& Socket = NAME_None);
+	bool AddSocket(FName Socket = NAME_None);
 
 	/** Remove a socket at runtime. */
 	UFUNCTION(BlueprintCallable, Category = "TargetingHelper", meta = (AutoCreateRefTerm = "Socket"))
-	bool RemoveSocket(const FName& Socket = NAME_None);
+	bool RemoveSocket(FName Socket = NAME_None);
 
-	/** Update the MeshComponent for calculating socket location and widget attachment. */
+	/** Update the DesiredMesh. Which is mostly used in socket location calculations. */
 	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
-	void SetMeshComponent(UMeshComponent* NewMeshComponent);
+	void UpdateDesiredMesh(UMeshComponent* NewMeshComponent);
 
-	/** Return the implicit UWidgetComponent. */
-	UFUNCTION(BlueprintPure, Category = "TargetingHelper")
-	UWidgetComponent* GetWidgetComponent() const{ return WidgetComponent;}
-
-/*******************************************************************************************/
-/*******************************  Native  **************************************************/
-/*******************************************************************************************/
-private:
-	/** All Invaders. Usually 1 in standalone. Multiple in Network. */
-	UPROPERTY(Transient)
-	TSet<ULockOnTargetComponent*> Invaders;
-
-	/** Implicit WidgetComponent is used to indicate the Target. */
-	UPROPERTY(Transient)
-	TObjectPtr<UWidgetComponent> WidgetComponent;
-
-	/** Cached mesh component is used to calculate a socket location and widget attachment. */
-	TWeakObjectPtr<USceneComponent> OwnerMeshComponent;
-
-	/** WidgetComponent was created during initialization. */
-	uint8 bWidgetWasInitialized : 1;
-
-	/** Init MeshComponent by Name on BeginPlay. */
-	uint8 bWantsMeshInitialization : 1;
-
-public:
-	/** Called to inform the TargetingHelperComponent that it's been Targeted. */
-	virtual void CaptureTarget(ULockOnTargetComponent* const Instigator, const FName& Socket);
-
-	/** Called to inform the TargetingHelperComponent that it's been Released. */
-	virtual void ReleaseTarget(ULockOnTargetComponent* const Instigator);
-
-	/** Returns world location of the socket. bWithoffset = true should be with an Instigator for the offset in the camera space. */
-	FVector GetSocketLocation(const FName& Socket, bool bWithOffset = false, const ULockOnTargetComponent* const Instigator = nullptr) const;
-
-private:
-	void InitWidgetComponent();
-
-	/** Is the WidgetComponent properly initialized and available now. */
-	bool IsWidgetInitialized() const;
-
-	/** Load and display the widget for the locally controlled Instigator. */
-	void UpdateWidget(const FName& Socket, const ULockOnTargetComponent* const Instigator);
-	
-	/** Hide the widget for the locally controlled Instigator. */
-	void HideWidget(const ULockOnTargetComponent* const Instigator);
-	
-	USceneComponent* GetWidgetParentComponent(const FName& Socket) const;
-	void SetWidgetClassOnWidgetComponent();
-
-private:
-	void InitMeshComponent();
-	UMeshComponent* GetFirstMeshComponent() const;
+protected:
 	USceneComponent* GetRootComponent() const;
 
-private:
-	/** Applying an offset to a socket location. */
-	void AddOffset(FVector& Location, const ULockOnTargetComponent* const Instigator) const;
+protected: /** BP */
+
+	/** Override to provide custom 'can be captured' rules (e.g. don't capture teammates). */
+	UFUNCTION(BlueprintNativeEvent, Category = "Targeting Helper")
+	bool CanBeCapturedCustom(const ULockOnTargetComponent* Instigator) const;
+
+	virtual bool CanBeCapturedCustom_Implementation(const ULockOnTargetComponent* Instigator) const;
+
+	/** Override to get a custom Focus point world location. */
+	UFUNCTION(BlueprintNativeEvent, Category = "Targeting Helper")
+	FVector GetCustomFocusPoint(const ULockOnTargetComponent* Instigator) const;
+
+	virtual FVector GetCustomFocusPoint_Implementation(const ULockOnTargetComponent* Instigator) const;
+
+	/** Called when the Target is captured. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "TargetingHelper", meta = (DisplayName = "On Target Captured"))
+	void K2_OnCaptured(const ULockOnTargetComponent* Instigator, FName Socket);
+
+	/** Called when the Target is released. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "TargetingHelper", meta = (DisplayName = "On Target Released"))
+	void K2_OnReleased(const ULockOnTargetComponent* Instigator);
+
+#if WITH_EDITOR
+	UFUNCTION()
+	virtual TArray<FString> GetAvailableSockets() const;
+
+	UFUNCTION()
+	virtual TArray<FString> GetAvailableMeshes() const;
+#endif
 };

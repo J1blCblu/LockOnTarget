@@ -2,10 +2,10 @@
 
 #include "LockOnTargetComponent.h"
 #include "TargetingHelperComponent.h"
-#include "LockOnSubobjects/RotationModes/RotationModeBase.h"
 #include "LockOnSubobjects/TargetHandlers/TargetHandlerBase.h"
+#include "LockOnTargetDefines.h"
+#include "LockOnSubobjects/LockOnTargetModuleBase.h"
 
-#include "Camera/PlayerCameraManager.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 #include "Engine/Engine.h"
@@ -14,23 +14,21 @@
 
 ULockOnTargetComponent::ULockOnTargetComponent()
 	: bCanCaptureTarget(true)
-	, bDisableTickWhileUnlocked(true)
-	, InputBufferThreshold(.1f)
-	, BufferResetFrequency(0.15f)
+	, InputBufferThreshold(.15f)
+	, BufferResetFrequency(.2f)
 	, ClampInputVector(-2.f, 2.f)
-	, SwitchDelay(0.3f)
+	, InputProcessingDelay(0.25f)
 	, bFreezeInputAfterSwitch(true)
 	, UnfreezeThreshold(1e-2f)
-	, bIsTargetLocked(false)
 	, TargetingDuration(0.f)
+	, bIsTargetLocked(false)
 	, InputBuffer(0.f)
 	, InputVector(0.f)
 	, bInputFrozen(false)
 {
 	PrimaryComponentTick.bCanEverTick = true;
-	PrimaryComponentTick.bStartWithTickEnabled = false;
+	PrimaryComponentTick.bStartWithTickEnabled = true;
 	PrimaryComponentTick.TickGroup = TG_PostUpdateWork;
-
 	SetIsReplicatedByDefault(true);
 }
 
@@ -38,30 +36,52 @@ void ULockOnTargetComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (!bDisableTickWhileUnlocked)
+	if (IsValid(TargetHandlerImplementation))
 	{
-		SetComponentTickEnabled(true);
+		TargetHandlerImplementation->Initialize(this);
+	}
+
+	for (ULockOnTargetModuleBase* const Module : Modules)
+	{
+		if (IsValid(Module))
+		{
+			Module->Initialize(this);
+		}
 	}
 }
 
-void ULockOnTargetComponent::EndPlay(const EEndPlayReason::Type Reason)
+void ULockOnTargetComponent::EndPlay(EEndPlayReason::Type EndPlayReason)
 {
-	Super::EndPlay(Reason);
+	ReleaseTarget(CurrentTargetInternal);
+	RemoveAllModules();
 
-	ClearTargetNative();
+	if (IsValid(TargetHandlerImplementation))
+	{
+		TargetHandlerImplementation->Deinitialize(this);
+	}
 
-	if(GetWorld())
+	if (GetWorld())
 	{
 		GetWorld()->GetTimerManager().ClearAllTimersForObject(this);
 	}
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void ULockOnTargetComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME_CONDITION(ThisClass, Rep_TargetInfo, COND_SkipOwner);
-	DOREPLIFETIME_CONDITION(ThisClass, TargetingDuration, COND_SkipOwner);
+	//To read more about network: PushModel.h, NetSerialization.h, ActorChannel.h, NetDriver.h,
+	//NetConnection.h, ReplicationGraph.h, DataReplication.h, NetworkGuid.h, FastArraySerializer.h.
+	FDoRepLifetimeParams Params;
+	Params.bIsPushBased = true; //Can be activated in DefaultEngine.ini
+	Params.Condition = COND_SkipOwner;
+
+	DOREPLIFETIME_WITH_PARAMS_FAST(ThisClass, CurrentTargetInternal, Params);
+
+	//Basically need to initially replicate the TargetingDuration cause a SimulatedProxy may not be relevant while the Target was locked. Doesn't make sense for the AutonomousProxy.
+	DOREPLIFETIME_CONDITION(ThisClass, TargetingDuration, COND_InitialOnly); //@TODO: Maybe sync in the OnRep or not, cause it's accurate enough for this type of timer.
 }
 
 /*******************************************************************************************/
@@ -70,211 +90,255 @@ void ULockOnTargetComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 
 void ULockOnTargetComponent::EnableTargeting()
 {
-	if (IsTargetLocked())
+	if (bCanCaptureTarget && !IsInputDelayActive())
 	{
-		ClearTargetManual();
-	}
-	else
-	{
-		if (bCanCaptureTarget)
-		{
-			FindTarget();
-		}
+		ActivateInputDelay(); //Prevent reliable buffer overflow.
+		IsTargetLocked() ? ClearTargetManual() : FindTarget();
 	}
 }
 
 void ULockOnTargetComponent::SwitchTargetYaw(float YawAxis)
 {
-	if (bCanCaptureTarget && IsTargetLocked() && GetWorld() && !GetWorld()->GetTimerManager().IsTimerActive(SwitchDelayHandler))
-	{
-		InputVector.X = YawAxis;
-	}
+	InputVector.X = YawAxis;
 }
 
 void ULockOnTargetComponent::SwitchTargetPitch(float PitchAxis)
 {
-	if (bCanCaptureTarget && IsTargetLocked() && GetWorld() && !GetWorld()->GetTimerManager().IsTimerActive(SwitchDelayHandler))
+	InputVector.Y = PitchAxis;
+}
+
+bool ULockOnTargetComponent::IsInputDelayActive() const
+{
+	return InputProcessingDelay > 0.f && GetWorld() && GetWorld()->GetTimerManager().IsTimerActive(InputProcessingDelayHandler);
+}
+
+void ULockOnTargetComponent::ActivateInputDelay()
+{
+	if (InputProcessingDelay > 0.f && GetWorld())
 	{
-		InputVector.Y = PitchAxis;
+		//Timer without a callback, 'cause we only need the fact that the timer is in progress.
+		GetWorld()->GetTimerManager().SetTimer(InputProcessingDelayHandler, InputProcessingDelay, false);
 	}
 }
 
-void ULockOnTargetComponent::ProcessAnalogInput()
+void ULockOnTargetComponent::ProcessAnalogInput(float DeltaTime)
 {
-	if (!GetWorld())
+	LOT_EVENT(ProcessInput, Blue);
+
+	//@TODO: If the Target is unlocked while the Input is frozen, then it'll be frozen until the new Target is captured.
+
+	//If you want to have an ability to unfreeze input while delay is active then change the order in the if statement below.
+	if (!bCanCaptureTarget || !GetWorld() || IsInputDelayActive() || !CanInputBeProcessed(InputVector.Size()))
 	{
 		return;
+	}
+
+	InputBuffer += InputVector.ClampAxes(ClampInputVector.X, ClampInputVector.Y) * DeltaTime;
+
+	if (InputBuffer.Size() > InputBufferThreshold)
+	{
+		if (bFreezeInputAfterSwitch)
+		{
+			bInputFrozen = true;
+		}
+
+		ActivateInputDelay(); //Prevent reliable buffer overflow.
+		FindTarget(InputBuffer);
+		ClearInputBuffer();
 	}
 
 	FTimerManager& TimerManager = GetWorld()->GetTimerManager();
 
-	if (TimerManager.IsTimerActive(SwitchDelayHandler))
+	if (!TimerManager.IsTimerActive(BufferResetHandler))
 	{
-		return;
-	}
-
-	if (!CanInputBeProcessed(InputVector.Size()))
-	{
-		return;
-	}
-
-	InputBuffer += InputVector.ClampAxes(ClampInputVector.X, ClampInputVector.Y) * GetWorld()->GetDeltaSeconds();
-
-	if (InputBuffer.Size() > GetInputBufferThreshold())
-	{
-		SwitchTarget(InputBuffer);
-
-		bInputFrozen = true;
-		ClearInputBuffer();
-
-		if (SwitchDelay > 0.f)
-		{
-			//Timer without a callback, 'cause we only need the fact that the timer is in progress.
-			TimerManager.SetTimer(SwitchDelayHandler, SwitchDelay, false);
-		}
-	}
-	else
-	{
-		if (!TimerManager.IsTimerActive(BufferResetHandler))
-		{
-			FTimerDelegate ClearInputBufferCallback;
-			ClearInputBufferCallback.BindUObject(this, &ULockOnTargetComponent::ClearInputBuffer);
-			TimerManager.SetTimer(BufferResetHandler, ClearInputBufferCallback, BufferResetFrequency, false);
-		}
+		TimerManager.SetTimer(BufferResetHandler, FTimerDelegate::CreateUObject(this, &ULockOnTargetComponent::ClearInputBuffer), BufferResetFrequency, false);
 	}
 }
 
 bool ULockOnTargetComponent::CanInputBeProcessed(float PlayerInput) const
 {
-	if (bFreezeInputAfterSwitch)
+	if (bFreezeInputAfterSwitch && bInputFrozen)
 	{
-		bool bInputIsEmpty = FMath::IsNearlyZero(PlayerInput, UnfreezeThreshold);
-
-		if (bInputFrozen)
-		{
-			bInputFrozen = !bInputIsEmpty;
-		}
-
-		return !bInputFrozen && !bInputIsEmpty;
+		bInputFrozen = PlayerInput > UnfreezeThreshold;
 	}
 
-	return true;
-}
-
-float ULockOnTargetComponent::GetInputBufferThreshold_Implementation() const
-{
-	return InputBufferThreshold;
+	return PlayerInput > 0.f && !bInputFrozen;
 }
 
 void ULockOnTargetComponent::ClearInputBuffer()
 {
-	InputBuffer = {0.f, 0.f};
+	InputBuffer = { 0.f, 0.f };
 }
 
 /*******************************************************************************************/
 /******************************** Target Handling ******************************************/
 /*******************************************************************************************/
 
-void ULockOnTargetComponent::FindTarget()
+void ULockOnTargetComponent::FindTarget(FVector2D OptionalInput)
 {
+	LOT_BOOKMARK("PerformFindTarget");
+	LOT_EVENT(FindTarget, Green);
+
 	if (IsValid(TargetHandlerImplementation))
 	{
-#if LOC_INSIGHTS
-		TRACE_BOOKMARK(TEXT("LOT_PerformFindTarget"));
-		SCOPED_NAMED_EVENT(LOT_TargetFinding, FColor::Red);
-#endif
-		
-		FTargetInfo NewTargetInfo = TargetHandlerImplementation->FindTarget();
-
-		if (IsValid(NewTargetInfo.HelperComponent))
-		{
-			UpdateTargetInfo(NewTargetInfo);
-		}
-		else
-		{
-			OnTargetNotFound.Broadcast();
-		}
+		const FTargetInfo NewTargetInfo = TargetHandlerImplementation->FindTarget(OptionalInput);
+		ProcessTargetHandlerResult(NewTargetInfo);
+	}
+	else
+	{
+		LOG_WARNING("Attemtp to access an invalid TargetHandler by %s", *GetNameSafe(GetOwner()));
 	}
 }
 
-bool ULockOnTargetComponent::SwitchTarget(FVector2D PlayerInput)
+void ULockOnTargetComponent::ProcessTargetHandlerResult(const FTargetInfo& TargetInfo)
 {
-	if (IsValid(TargetHandlerImplementation))
+	checkf(TargetInfo.GetActor() != GetOwner(), TEXT("Capturing yourself is not allowed."));
+
+	//Validate the Target.
+	bool bCanTargetBeCaptured = IsValid(TargetInfo.HelperComponent) && TargetInfo.HelperComponent->CanBeCaptured(this);
+	//If Target is locked and we've got the same TargetInfo then don't process it.
+	bool bIsTargetNotSame = !IsTargetLocked() || TargetInfo != CurrentTargetInternal;
+
+	if (bCanTargetBeCaptured && bIsTargetNotSame)
 	{
-#if LOC_INSIGHTS
-		TRACE_BOOKMARK(TEXT("LOT_PerformSwitchTarget"));
-		SCOPED_NAMED_EVENT(LOT_SwitchingTarget, FColor::Red);
-#endif
-
-		FTargetInfo NewTargetInfo;
-
-		if (TargetHandlerImplementation->SwitchTarget(NewTargetInfo, PlayerInput) && IsValid(NewTargetInfo.HelperComponent))
-		{
-			UpdateTargetInfo(NewTargetInfo);
-			return true;
-		}
-		else
-		{
-			OnTargetNotFound.Broadcast();
-		}
+		UpdateTargetInfo(TargetInfo);
 	}
+	else
+	{
+		LOT_BOOKMARK("TargetNotFound");
 
-	return false;
+		OnTargetNotFound.Broadcast();
+	}
 }
 
-bool ULockOnTargetComponent::CanContinueTargeting() const
+bool ULockOnTargetComponent::CanContinueTargeting()
 {
-	if (GetOwner())
+	//Corner case. Shouldn't actually be happened.
+	if (!GetOwner())
 	{
-		if(IsOwnerLocallyControlled())
+		ClearTargetManual();
+		return false;
+	}
+
+	/**
+	 * A few words about Target's network synchronization in the LockOnTargetComponent:
+	 *
+	 * It's not safe to capture a non-replicated Target that only exists in the owning player's world or isn't stably named (e.g. spawned at runtime).
+	 * Cause otherwise the Target will only be captured on that machine and the server won't know anything.
+	 * https://docs.unrealengine.com/5.0/en-US/replicating-object-references-in-unreal-engine/
+	 *
+	 * Captured Target's validity check is performed on the owning client (via TargetHandler or automatically) and on the non-owning client (automatically).
+	 * There is a problem that we can't know whether the Target Actor was replicated after its destruction (as far as I know, at least without extra memory).
+	 * So if the Target isn't replicated and destroyed locally on the server or simulated proxy, then the Target may become out of sync!
+	 * The owning client will still be capturing the Target, while the server won't be.
+	 *
+	 * General advice is to not capture non-replicated Target in case of unstably named actors and don't destroy them at all while they're locked.
+	 * Instead mark them as 'can't be captured' in the TargetingHelperComponent on the owning client and then destroy after a while.
+	 **/
+
+	 //@TODO: Actors without Controller should also use the TargetHadler.
+	if (IsLocallyControlled())
+	{
+		//Only the locally controlled component refers to the TargetHandler.
+		if (IsValid(TargetHandlerImplementation))
 		{
-			//Only the locally controlled component checks all conditions.
-			return IsValid(TargetHandlerImplementation) && TargetHandlerImplementation->CanContinueTargeting();
+			//If TargetHandler exists then give it a chance to decide what to do with the nulled Target, e.g. find a new Target.
+			if (TargetHandlerImplementation->CanContinueTargeting())
+			{
+				//Just verifying that TargetHandler 'handled' everything correctly or skipped these checks, cause otherwise the Target will be out of sync.
+				if (!IsValid(GetTarget()) || !GetHelperComponent()->CanBeCaptured(this))
+				{
+					ClearTargetManual();
+					return false;
+				}
+			}
+			else
+			{
+				//If TargetHandler decided that the Target should be released and didn't perform Target clearing then clear it manual.
+				if (IsTargetLocked())
+				{
+					ClearTargetManual();
+				}
+
+				return false;
+			}
 		}
 		else
 		{
-			//Server and SimulatedProxies just check the pointer's validity to avoid crashes.
-			return IsValid(GetTarget());
+			//If TargetHandlerImplementation is invalid then provide checks manually.
+			if (!IsValid(GetTarget()) || !GetHelperComponent()->CanBeCaptured(this))
+			{
+				ClearTargetManual();
+				return false;
+			}
+		}
+
+	}
+	else
+	{
+		//Non-locally controlled Server and SimulatedProxies just clear the Target locally.
+		if (!IsValid(GetTarget()))
+		{
+			ClearTargetManual();
+			return false;
 		}
 	}
 
-	return false;
+	return true;
 }
 
 /*******************************************************************************************/
 /*******************************  Manual Handling  *****************************************/
 /*******************************************************************************************/
 
-void ULockOnTargetComponent::SetLockOnTargetManual(AActor* NewTarget, const FName& Socket)
+void ULockOnTargetComponent::SetLockOnTargetManual(AActor* NewTarget, FName Socket)
 {
-	if (bCanCaptureTarget)
-	{
-		if (IsValid(NewTarget) && NewTarget != GetOwner())
-		{
-			UTargetingHelperComponent* NewTargetHelperComponent = NewTarget->FindComponentByClass<UTargetingHelperComponent>();
+	checkf(NewTarget != GetOwner(), TEXT("Capturing yourself is not allowed."));
 
-			if (IsValid(NewTargetHelperComponent) && NewTargetHelperComponent->CanBeTargeted(this))
-			{
-				UpdateTargetInfo({NewTargetHelperComponent, Socket});
-			}
+	if (bCanCaptureTarget && IsValid(NewTarget))
+	{
+		const FTargetInfo NewTargetInfo{ NewTarget->FindComponentByClass<UTargetingHelperComponent>(), Socket };
+
+		if (IsValid(NewTargetInfo.HelperComponent) && NewTargetInfo.HelperComponent->CanBeCaptured(this) && CurrentTargetInternal != NewTargetInfo)
+		{
+			UpdateTargetInfo(NewTargetInfo);
 		}
 	}
 }
 
-bool ULockOnTargetComponent::SwitchTargetManual(FVector2D PlayerInput)
+void ULockOnTargetComponent::SwitchTargetManual(FVector2D PlayerInput)
 {
-	return bCanCaptureTarget && IsTargetLocked() && SwitchTarget(PlayerInput);
+	if (bCanCaptureTarget && IsTargetLocked())
+	{
+		FindTarget(PlayerInput);
+	}
 }
 
 void ULockOnTargetComponent::ClearTargetManual(bool bAutoFindNewTarget)
 {
+	//Nice to have: Don't send the RPC if the CurrentTargetInternal is invalid, cause it'll automatically be cleared on the server.
+	//But this will only work in case of replicated actors. You can read more in CanContinueTargeting() implementation.
 	if (IsTargetLocked())
 	{
-		UpdateTargetInfo({nullptr, NAME_None});
-
-		if(bAutoFindNewTarget)
+		//Implementation uses 1 reliable server call.
+		if (bAutoFindNewTarget)
 		{
-			EnableTargeting();
+			//Clear the current Target locally.
+			Server_UpdateTargetInfo_Implementation({ nullptr, NAME_None });
+
+			//Find a new Target and if found automatically update on the server.
+			//Note that the released Target can be captured again.
+			FindTarget();
+
+			//If a new Target isn't found then clear the Target on the server.
+			if (!IsTargetLocked() && GetOwnerRole() == ROLE_AutonomousProxy)
+			{
+				Server_UpdateTargetInfo({ nullptr, NAME_None });
+			}
+		}
+		else
+		{
+			UpdateTargetInfo({ nullptr, NAME_None });
 		}
 	}
 }
@@ -286,11 +350,10 @@ void ULockOnTargetComponent::ClearTargetManual(bool bAutoFindNewTarget)
 void ULockOnTargetComponent::UpdateTargetInfo(const FTargetInfo& TargetInfo)
 {
 	//Update the Target locally.
-	Rep_TargetInfo = TargetInfo;
-	OnTargetInfoUpdated();
+	Server_UpdateTargetInfo_Implementation(TargetInfo);
 
 	//Update the Target on the server.
-	if(GetOwner()->GetNetMode() != NM_Standalone)
+	if (GetOwnerRole() == ROLE_AutonomousProxy)
 	{
 		Server_UpdateTargetInfo(TargetInfo);
 	}
@@ -298,193 +361,236 @@ void ULockOnTargetComponent::UpdateTargetInfo(const FTargetInfo& TargetInfo)
 
 void ULockOnTargetComponent::Server_UpdateTargetInfo_Implementation(const FTargetInfo& TargetInfo)
 {
-	if (TargetInfo.GetActor() != GetOwner())
-	{
-		Rep_TargetInfo = TargetInfo;
-		OnTargetInfoUpdated();
-	}
+	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, CurrentTargetInternal, this);
+	const FTargetInfo OldTarget = CurrentTargetInternal;
+	CurrentTargetInternal = TargetInfo;
+	OnTargetInfoUpdated(OldTarget);
 }
 
-void ULockOnTargetComponent::OnTargetInfoUpdated()
+void ULockOnTargetComponent::OnTargetInfoUpdated(const FTargetInfo& OldTarget)
 {
-	if (IsValid(Rep_TargetInfo.HelperComponent))
+	if (IsValid(CurrentTargetInternal.HelperComponent))
 	{
-		if (IsTargetLocked())
+		if (OldTarget.HelperComponent == CurrentTargetInternal.HelperComponent)
 		{
-			if (Rep_TargetInfo.HelperComponent == GetHelperComponent())
-			{
-				//If locked and received the same HelperComponent then change the socket.
-				if (Rep_TargetInfo.SocketForCapturing != GetCapturedSocket())
-				{
-					UpdateTargetSocket();
-				}
-			}
-			else
-			{
-				//If locked and received another HelperComponent then switch to the new Target.
-				ClearTargetNative();
-				SetLockOnTargetNative();
-			}
+			UpdateTargetSocket(OldTarget.SocketForCapturing);
 		}
 		else
 		{
-			//If not locked then capture the new Target.
-			SetLockOnTargetNative();
+			ReleaseTarget(OldTarget);
+			CaptureTarget(CurrentTargetInternal);
 		}
 	}
 	else
 	{
-		//If HelperComponent is invalid clear the Target.
-		ClearTargetNative();
+		ReleaseTarget(OldTarget);
 	}
 }
 
-void ULockOnTargetComponent::SetLockOnTargetNative()
+void ULockOnTargetComponent::CaptureTarget(const FTargetInfo& Target)
 {
-#if LOC_INSIGHTS
-	SCOPED_NAMED_EVENT(LOT_SetLock, FColor::Emerald);
-	TRACE_BOOKMARK(TEXT("Target Locked: %s"), *GetNameSafe(Rep_TargetInfo.GetActor()));
-#endif
+	LOT_BOOKMARK("Target captured %s", *GetNameSafe(Target.GetActor()));
 
-	PrivateTargetInfo = Rep_TargetInfo;
 	bIsTargetLocked = true;
-	
-	//Notify TargetingHelperComponent.
-	GetHelperComponent()->CaptureTarget(this, GetCapturedSocket());
-	
-	//Notify TargetHadler that the Target is captured.
-	TargetHandlerImplementation->OnTargetLockedNative();
-	OnTargetLocked.Broadcast(GetTarget());
 
-	if (bDisableTickWhileUnlocked)
-	{
-		SetComponentTickEnabled(true);
-	}
+	//Notify TargetingHelperComponent.
+	Target.HelperComponent->CaptureTarget(this, Target.SocketForCapturing);
+
+	//Notify all listeners including the TargetHandler.
+	OnTargetLocked.Broadcast(Target.HelperComponent, Target.SocketForCapturing);
 }
 
-void ULockOnTargetComponent::ClearTargetNative()
+void ULockOnTargetComponent::ReleaseTarget(const FTargetInfo& Target)
 {
 	if (IsTargetLocked())
 	{
-#if LOC_INSIGHTS
-		TRACE_BOOKMARK(TEXT("Target unlocked: %s"), *GetNameSafe(GetTarget()));
-		SCOPED_NAMED_EVENT(LOT_ClearTarget, FColor::Silver);
-#endif
+		LOT_BOOKMARK("Target released %s", *GetNameSafe(Target.GetActor()));
 
-		if (bDisableTickWhileUnlocked)
-		{
-			SetComponentTickEnabled(false);
-		}
+		bIsTargetLocked = false;
 
 		//Notify TargetingHelperComponent.
-		if (IsValid(GetHelperComponent()))
+		if (IsValid(Target.HelperComponent))
 		{
-			GetHelperComponent()->ReleaseTarget(this);
+			Target.HelperComponent->ReleaseTarget(this);
 		}
 
-		TargetingDuration = 0.f;
-		bIsTargetLocked = false;
-		PrivateTargetInfo.Reset();
+		//Notify all listeners including the TargetHandler.
+		OnTargetUnlocked.Broadcast(Target.HelperComponent, Target.SocketForCapturing);
 
-		//Notify TargetHandler that the Target is released.
-		TargetHandlerImplementation->OnTargetUnlockedNative();
-		OnTargetUnlocked.Broadcast(GetTarget());
+		//Clear the timer after notifying all listeners.
+		TargetingDuration = 0.f;
 	}
 }
 
-void ULockOnTargetComponent::UpdateTargetSocket()
+void ULockOnTargetComponent::UpdateTargetSocket(FName OldSocket)
 {
-#if LOC_INSIGHTS
-	TRACE_BOOKMARK(TEXT("LOT_SocketChanged %s"), *Rep_TargetInfo.SocketForCapturing.ToString());
-	SCOPED_NAMED_EVENT(LOT_SocketChanged, FColor::Yellow);
-#endif
+	LOT_BOOKMARK("SocketChanged %s->%s", *OldSocket.ToString(), *GetCapturedSocket().ToString());
 
-	PrivateTargetInfo.SocketForCapturing = Rep_TargetInfo.SocketForCapturing;
 	GetHelperComponent()->CaptureTarget(this, GetCapturedSocket());
+	OnSocketChanged.Broadcast(GetHelperComponent(), GetCapturedSocket(), OldSocket);
 }
 
 /*******************************************************************************************/
-/*******************************  Tick and During Target Lock features  ********************/
+/***************************************  Tick  ********************************************/
 /*******************************************************************************************/
 
 void ULockOnTargetComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-#if LOC_INSIGHTS
-	SCOPED_NAMED_EVENT(LOT_Tick, FColor::Orange);
-#endif
+	LOT_EVENT(Tick, Red);
 
 	if (IsTargetLocked() && CanContinueTargeting())
 	{
-		if (GetOwner()->GetLocalRole() > ROLE_SimulatedProxy /*GetOwner()->HasAuthority() || IsOwnerLocallyControlled()*/)
-		{
-			TargetingDuration += DeltaTime;
-		}
+		TargetingDuration += DeltaTime;
 
-		const FVector FocusLocation = GetCapturedLocation(true);
-
-		if (IsOwnerLocallyControlled())
+		if (IsLocallyControlled())
 		{
 			//Process the input only for the locally controlled Owner.
-			ProcessAnalogInput();
-
-			//Update the ControlRotation locally and it'll be replicated to the server automatically.
-			TickControlRotationCalc(DeltaTime, FocusLocation);
-
-#if WITH_EDITORONLY_DATA
-			DebugOnTick();
-#endif
+			ProcessAnalogInput(DeltaTime);
 		}
-
-		//Update on the Client and the Server simultaneously.
-		//TODO: server check as in CMC.
-		TickOwnerRotationCalc(DeltaTime, FocusLocation);
 	}
-}
 
-void ULockOnTargetComponent::TickControlRotationCalc(float DeltaTime, const FVector& TargetLocation)
-{
-	if (IsValid(ControlRotationModeConfig) && ControlRotationModeConfig->bIsEnabled)
+	if (IsValid(TargetHandlerImplementation))
 	{
-		AController* const Controller = GetController();
-		const FRotator& ControlRotation = Controller->GetControlRotation();
-		const FVector LocationFrom = GetCameraLocation();
-		const FRotator NewRotation = ControlRotationModeConfig->GetRotation(ControlRotation, LocationFrom, TargetLocation, DeltaTime);
-		Controller->SetControlRotation(NewRotation);
+		TargetHandlerImplementation->Update(InputVector, DeltaTime);
 	}
-}
 
-void ULockOnTargetComponent::TickOwnerRotationCalc(float DeltaTime, const FVector& TargetLocation)
-{
-	if (IsValid(OwnerRotationModeConfig) && OwnerRotationModeConfig->bIsEnabled && GetOwner())
-	{
-		const FVector LocationFrom = GetOwnerLocation();
-		const FRotator& CurrentRotation = GetOwnerRotation();
-		const FRotator NewRotation = OwnerRotationModeConfig->GetRotation(CurrentRotation, LocationFrom, TargetLocation, DeltaTime);
-		GetOwner()->SetActorRotation(NewRotation);
-	}
+	UpdateModules(DeltaTime);
 }
 
 /*******************************************************************************************/
-/*******************************  Helpers Methods  *****************************************/
+/*******************************  LockOnTarget Modules  ************************************/
 /*******************************************************************************************/
+
+void ULockOnTargetComponent::UpdateModules(float DeltaTime)
+{
+	for (ULockOnTargetModuleBase* const Module : Modules)
+	{
+		if (IsValid(Module))
+		{
+			Module->Update(InputVector, DeltaTime);
+		}
+	}
+}
+
+const TArray<ULockOnTargetModuleBase*>& ULockOnTargetComponent::GetAllModules() const
+{
+	return Modules;
+}
+
+ULockOnTargetModuleBase* ULockOnTargetComponent::FindModuleByClass(TSubclassOf<ULockOnTargetModuleBase> ModuleClass) const
+{
+	auto Module = Modules.FindByPredicate([ModuleClass](const ULockOnTargetModuleBase* const Module)
+		{
+			return IsValid(Module) ? Module->IsA(ModuleClass) : false;
+		});
+
+	return Module ? *Module : nullptr;
+}
+
+ULockOnTargetModuleBase* ULockOnTargetComponent::AddModuleByClass(TSubclassOf<ULockOnTargetModuleBase> ModuleClass)
+{
+	ULockOnTargetModuleBase* NewModule = NewObject<ULockOnTargetModuleBase>(this, ModuleClass);
+
+	if (NewModule)
+	{
+		NewModule->Initialize(this);
+		Modules.Add(NewModule);
+	}
+	else
+	{
+		LOG_ERROR("Failed to create the module named %s", *ModuleClass->GetName());
+	}
+
+	return NewModule;
+}
+
+bool ULockOnTargetComponent::RemoveModuleByClass(TSubclassOf<ULockOnTargetModuleBase> ModuleClass)
+{
+	if (ModuleClass.Get())
+	{
+		for (int32 i = 0; i < Modules.Num(); ++i)
+		{
+			ULockOnTargetModuleBase* const Module = Modules[i];
+
+			if (IsValid(Module) && Module->IsA(ModuleClass))
+			{
+				Module->Deinitialize(this);
+				Modules.RemoveAtSwap(i);
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+void ULockOnTargetComponent::RemoveAllModules()
+{
+	for (ULockOnTargetModuleBase* const Module : Modules)
+	{
+		if (IsValid(Module))
+		{
+			Module->Deinitialize(this);
+		}
+	}
+
+	Modules.Empty();
+}
+
+/*******************************************************************************************/
+/************************************  Misc  ***********************************************/
+/*******************************************************************************************/
+
+void ULockOnTargetComponent::SetCanCaptureTarget(bool bInCanCaptureTarget)
+{
+	bCanCaptureTarget = bInCanCaptureTarget;
+
+	//To prevent the situation where the owning client is still capturing the Target while the server is not.
+	if (!bCanCaptureTarget && IsLocallyControlled())
+	{
+		ClearTargetManual();
+	}
+}
+
+void ULockOnTargetComponent::SetTargetHandler(UTargetHandlerBase* NewTargetHandler)
+{
+	if (IsValid(NewTargetHandler))
+	{
+		if (NewTargetHandler != TargetHandlerImplementation)
+		{
+			checkf(TargetHandlerImplementation, TEXT("Failed to deinitialize mandatory TargetHandler module."));
+			TargetHandlerImplementation->Deinitialize(this);
+			TargetHandlerImplementation = NewTargetHandler;
+			TargetHandlerImplementation->Initialize(this);
+		}
+	}
+	else
+	{
+		LOG_WARNING("Passed NewTargetHandler is invalid.");
+	}
+}
+
+UTargetHandlerBase* ULockOnTargetComponent::SetTargetHandlerByClass(TSubclassOf<UTargetHandlerBase> TargetHandlerClass)
+{
+	SetTargetHandler(NewObject<UTargetHandlerBase>(this, TargetHandlerClass));
+	return TargetHandlerImplementation;
+}
 
 AActor* ULockOnTargetComponent::GetTarget() const
 {
 	return GetHelperComponent() ? GetHelperComponent()->GetOwner() : nullptr;
 }
 
-FVector ULockOnTargetComponent::GetCapturedLocation(bool bWithOffset) const
+FVector ULockOnTargetComponent::GetCapturedSocketLocation() const
 {
-	FVector TargetedLocation(0.f);
+	return IsTargetLocked() && GetHelperComponent() ? GetHelperComponent()->GetSocketLocation(GetCapturedSocket()) : FVector(0.f);
+}
 
-	if (IsTargetLocked())
-	{
-		TargetedLocation = GetHelperComponent()->GetSocketLocation(GetCapturedSocket(), bWithOffset, this);
-	}
-
-	return TargetedLocation;
+FVector ULockOnTargetComponent::GetCapturedFocusLocation() const
+{
+	return IsTargetLocked() && GetHelperComponent() ? GetHelperComponent()->GetFocusLocation(this) : FVector(0.f);
 }
 
 AController* ULockOnTargetComponent::GetController() const
@@ -492,21 +598,15 @@ AController* ULockOnTargetComponent::GetController() const
 	return GetOwner() ? GetOwner()->GetInstigatorController() : nullptr;
 }
 
-bool ULockOnTargetComponent::IsOwnerLocallyControlled() const
+bool ULockOnTargetComponent::IsLocallyControlled() const
 {
-	AController* Controller = GetController();
-
+	const AController* const Controller = GetController();
 	return IsValid(Controller) && Controller->IsLocalController();
 }
 
 APlayerController* ULockOnTargetComponent::GetPlayerController() const
 {
 	return Cast<APlayerController>(GetController());
-}
-
-FRotator ULockOnTargetComponent::GetRotationToTarget() const
-{
-	return FRotationMatrix::MakeFromX(GetCapturedLocation() - GetCameraLocation()).Rotator();
 }
 
 FRotator ULockOnTargetComponent::GetOwnerRotation() const
@@ -521,12 +621,14 @@ FVector ULockOnTargetComponent::GetOwnerLocation() const
 
 FRotator ULockOnTargetComponent::GetCameraRotation() const
 {
-	return GetPlayerController() ? GetPlayerController()->PlayerCameraManager->GetCameraRotation() : GetOwnerRotation();
+	const APlayerController* const Controller = GetPlayerController();
+	return IsValid(Controller) ? Controller->PlayerCameraManager->GetCameraRotation() : GetOwnerRotation();
 }
 
 FVector ULockOnTargetComponent::GetCameraLocation() const
 {
-	return GetPlayerController() ? GetPlayerController()->PlayerCameraManager->GetCameraLocation() : GetOwnerLocation();
+	const APlayerController* const Controller = GetPlayerController();
+	return IsValid(Controller) ? Controller->PlayerCameraManager->GetCameraLocation() : GetOwnerLocation();
 }
 
 FVector ULockOnTargetComponent::GetCameraUpVector() const
@@ -543,62 +645,3 @@ FVector ULockOnTargetComponent::GetCameraForwardVector() const
 {
 	return GetCameraRotation().Vector();
 }
-
-void ULockOnTargetComponent::SetTargetHandler(UTargetHandlerBase* NewTargetHandler)
-{
-	if(IsValid(NewTargetHandler))
-	{
-		TargetHandlerImplementation = NewTargetHandler;
-
-		if(IsTargetLocked())
-		{
-			TargetHandlerImplementation->OnTargetLockedNative();
-		}
-	}
-}
-
-void ULockOnTargetComponent::SetTickWhileUnlockedEnabled(bool bTickWhileUnlocked)
-{
-	bDisableTickWhileUnlocked = bTickWhileUnlocked;
-
-	if (bDisableTickWhileUnlocked && !IsTargetLocked())
-	{
-		SetComponentTickEnabled(false);
-	}
-}
-
-/*******************************************************************************************/
-/*******************************  Debug  ***************************************************/
-/*******************************************************************************************/
-
-#if WITH_EDITORONLY_DATA
-
-void ULockOnTargetComponent::DebugOnTick() const
-{
-	if (bShowTargetInfo)
-	{
-		TSet<ULockOnTargetComponent*> Invaders = GetHelperComponent()->GetInvaders();
-		FString InvadersName;
-
-		for (ULockOnTargetComponent* Invader : Invaders)
-		{
-			if (Invader)
-			{
-				InvadersName.Append(FString::Printf(TEXT("%s, "), *GetNameSafe(Invader->GetOwner())));
-			}
-		}
-
-		GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("\nTarget Invaders amount: %i \nInvaders: [%s]"), GetHelperComponent()->GetInvaders().Num(), *InvadersName), true, FVector2D(1.1f));
-		GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("\nControlRotationMode: %s \nOwnerRotationMode: %s"), *GetNameSafe(ControlRotationModeConfig), *GetNameSafe(OwnerRotationModeConfig)), true, FVector2D(1.1f));
-
-		if (bFreezeInputAfterSwitch)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("Is Input Frozen: %s "), bInputFrozen ? TEXT("true") : TEXT("false")), true, FVector2D(1.1f));
-		}
-
-		GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("Input Buffer ratio = %.3f / %.3f InputVector2D: X %.3f, Y %.3f "), InputBuffer.Size(), GetInputBufferThreshold(), InputBuffer.X, InputBuffer.Y), true, FVector2D(1.1f));
-		GEngine->AddOnScreenDebugMessage(-1, 0.f, DebugInfoColor, FString::Printf(TEXT("\n\nTarget: %s \nCapturedSocket: %s \nSockets Amount: %i\nDuration: %.2f "), *GetNameSafe(GetTarget()), *PrivateTargetInfo.SocketForCapturing.ToString(), GetHelperComponent()->GetSockets().Num(), GetTargetingDuration()), true, FVector2D(1.15f));
-	}
-}
-
-#endif

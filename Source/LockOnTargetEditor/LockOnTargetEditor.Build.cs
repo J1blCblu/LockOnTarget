@@ -4,54 +4,41 @@ using UnrealBuildTool;
 
 public class LockOnTargetEditor : ModuleRules
 {
-	public LockOnTargetEditor(ReadOnlyTargetRules Target) : base(Target)
-	{
-		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-		
-		PublicIncludePaths.AddRange(
-			new string[] {
-				//"LockOnTargetEditor/Public"
-			}
-			);
-				
-		
-		PrivateIncludePaths.AddRange(
-			new string[] {
-				//"LockOnTargetEditor/Private"
-			}
-			);
-			
-		
-		PublicDependencyModuleNames.AddRange(
-			new string[]
-			{
-				"Core",
-				"LockOnTarget"
-			}
-			);
-			
-		
-		PrivateDependencyModuleNames.AddRange(
-			new string[]
-			{
-				"CoreUObject",
-				"Engine",
-				"Slate",
-				"SlateCore",
-				"UMG",
-				"EditorStyle",
-				"UnrealEd",
+    public LockOnTargetEditor(ReadOnlyTargetRules Target) : base(Target)
+    {
+        PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
-				// ... add private dependencies that you statically link with here ...	
-			}
-			);
-		
-		
-		DynamicallyLoadedModuleNames.AddRange(
-			new string[]
-			{
-				// ... add any modules that your module loads dynamically here ...
-			}
-			);
-	}
+        PublicDependencyModuleNames.AddRange(
+            new string[]
+            {
+                "Core",
+            }
+            );
+
+
+        PrivateDependencyModuleNames.AddRange(
+            new string[]
+            {
+                "LockOnTarget",
+                "CoreUObject",
+                "Engine",
+                "Slate",
+                "SlateCore",
+                "EditorStyle",
+                "InputCore",
+                "PropertyEditor",
+                "UnrealEd",
+            }
+            );
+
+        if (Target.bBuildDeveloperTools || (Target.Configuration != UnrealTargetConfiguration.Shipping && Target.Configuration != UnrealTargetConfiguration.Test))
+        {
+            PublicDependencyModuleNames.Add("GameplayDebugger");
+            PublicDefinitions.Add("WITH_GAMEPLAY_DEBUGGER=1");
+        }
+        else
+        {
+            PublicDefinitions.Add("WITH_GAMEPLAY_DEBUGGER=0");
+        }
+    }
 }

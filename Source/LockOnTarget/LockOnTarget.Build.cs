@@ -15,7 +15,7 @@ public class LockOnTarget : ModuleRules
 		//bUsePCHFiles = false;
 
 		//Lock On Target Unreal Insights preprocessor definition.
-		PublicDefinitions.Add("LOC_INSIGHTS = 0");
+		PublicDefinitions.Add("LOT_INSIGHTS = 1");
 
 		PublicIncludePaths.AddRange(
 			new string[] 
@@ -47,6 +47,7 @@ public class LockOnTarget : ModuleRules
 				//"SlateCore",
 				"UMG",
 				"Projects",
+				"NetCore",
 			}
 			);
 

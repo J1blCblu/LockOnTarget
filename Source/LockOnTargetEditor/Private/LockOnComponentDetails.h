@@ -10,4 +10,9 @@ public:
 	static TSharedRef<IDetailCustomization> MakeInstance();
 	virtual void CustomizeDetails(IDetailLayoutBuilder& DetailLayout) override;
 
+public:
+	void OnInitialSetupNavigate();
+	void OnFullSetupNavigate();
+	void OnDebuggerNavigate();
+	void OnInputNavigate();
 };

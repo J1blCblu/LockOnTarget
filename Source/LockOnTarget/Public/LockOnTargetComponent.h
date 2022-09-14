@@ -4,9 +4,8 @@
 
 #include "Components/ActorComponent.h"
 #include "CoreMinimal.h"
-
-#include "Utilities/Structs.h"
-
+#include "TargetInfo.h"
+#include "TemplateUtilities.h"
 #include "LockOnTargetComponent.generated.h"
 
 class UTargetingHelperComponent;
@@ -14,341 +13,287 @@ class AController;
 class APlayerController;
 class AActor;
 class UTargetHandlerBase;
-class URotationModeBase;
+class ULockOnTargetModuleBase;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTargetLocked, AActor*, LockedActor);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTargetLocked, class UTargetingHelperComponent*, Target, FName, Socket);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTargetUnlocked, class UTargetingHelperComponent*, UnlockedTarget, FName, Socket);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnSocketChanged, class UTargetingHelperComponent*, CurrentTarget, FName, NewSocket, FName, OldSocket);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnTargetNotFound);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTargetUnlocked, AActor*, UnlockedActor);
 
 /**
- *	LockOnTargetComponent gives the Owner(Player) the ability to lock onto(capture) the Target that the Camera and/or Owner will follow.
+ *	LockOnTargetComponent gives the Owner(Player) an ability to find a Target and store it.
  * 
  *	LockOnTargetComponent is a wrapper over the next systems:
  *	1. Target storage (TargetingHelperComponent and Socket). Synchronized with the server.
  *	2. Processing the input. Processed locally.
- *	3. TargetHandler subobject - used for Target handling(find, switch, maintenance). Processed locally.
- *	4. RotationMode subobject - used to get the rotation for the Control/Owner rotation. Mostly processed locally.
- * 
- *	Main advantages:
- *	- Capture any Actor with a TargetingHelperComponent which can be removed and added at runtime.
- *  - Target can have multiple sockets, which can be added/removed at runtime.
- *  - Network synchronization.
- *  - Switch Targets in any direction (in screen space).
- *  - Custom rules for finding, switching, maintenance the Target.
- *  - Custom owner/control rotation rules.
- *  - Flexible input processing settings.
- *  - Several useful methods for the Owner.
+ *	3. TargetHandler - used for Target handling(find, maintenance). Processed locally.
+ *	4. Modules - piece of functionality that can be dynamically added/removed.
  * 
  *	Network Design Philosophy:
  *	Lock On Target is just a system which finds a Target, stores and synchronizes it over the network. 
  *	Finding the Target is not a quick operation to process it on the server for each player. 
- *	Due to this and network relevancy opportunities (not relevant Target doesn't exist in the world) finding the Target processed locally on the owning client.
+ *	Due to this and network relevancy opportunities (not relevant Target doesn't exist in the world)
+ *	finding the Target processed locally on the owning client.
  * 
- *	@see UTargetingHelperComponent, UTargetHandlerBase, URotationModeBase.
+ *	@see UTargetingHelperComponent, UTargetHandlerBase, ULockOnTargetModuleBase.
  */
-UCLASS(Blueprintable, ClassGroup = (LockOnTarget), HideCategories = (Components, Activation, Cooking, ComponentTick, Sockets, Collision, ComponentReplication), meta = (BlueprintSpawnableComponent))
+UCLASS(Blueprintable, ClassGroup = (LockOnTarget), HideCategories = (Components, Activation, Cooking, ComponentTick, Sockets, Collision), meta = (BlueprintSpawnableComponent))
 class LOCKONTARGET_API ULockOnTargetComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
 public:
 	ULockOnTargetComponent();
+	friend class FGDC_LockOnTarget; //Gameplay Debugger
 	
-protected:
-	//UActorComponent
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-	virtual void BeginPlay() override;
-	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
-
-/*******************************************************************************************/
-/*******************************  Class config  ********************************************/
-/*******************************************************************************************/
-public:
-	/** Can this Component capture Targets. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings")
-	bool bCanCaptureTarget;
-
 private:
-	/** Implementation of handling Target (find, switch, maintenance). */
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Default Settings")
+	/** Can this Component capture a Target. Not replicated. Have affect only for the local owning client. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Default Settings", meta = (AllowPrivateAccess))
+	uint8 bCanCaptureTarget : 1;
+
+	/** Special module that handles the Target. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Default Settings", meta = (AllowPrivateAccess, NoResetToDefault))
 	TObjectPtr<UTargetHandlerBase> TargetHandlerImplementation;
 	
-public:
-	/** 
-	 * Rotation mode for the control Rotation. 
-	 * 
-	 * Also note that you may need to control the following fields yourself:
-	 *	+ bOrientRotationToMovement in UCharacterMovementComponent.
-	 *	+ bUseControllerRotationYaw in APawn.
-	 *	(e.g. via OnTargetLocked/OnTargetUnlocked delegates)
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced, Category = "Lock Settings")
-	TObjectPtr<URotationModeBase> ControlRotationModeConfig;
-
-	/** 
-	 * Rotation mode for Owner Rotation.
-	 * 
-	 * Also note that you may need to control the following fields yourself:
-	 *	+ bOrientRotationToMovement in UCharacterMovementComponent.
-	 *	+ bUseControllerRotationYaw in APawn.
-	 *	(e.g. via OnTargetLocked/OnTargetUnlocked delegates)
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced, Category = "Lock Settings")
-	TObjectPtr<URotationModeBase> OwnerRotationModeConfig;
-
-private:
-	/** Should the component tick while the no Target is locked. */
-	UPROPERTY(AdvancedDisplay, EditDefaultsOnly, Category = "Lock Settings")
-	bool bDisableTickWhileUnlocked;
+	/** Set of default Modules. Will be instantiated on all machines (may be changed in the future). Update order is not defined. */
+	UPROPERTY(EditDefaultsOnly, Category = "Modules", meta = (DisplayName = "Default Modules", NoResetToDefault))
+	TArray<TObjectPtr<ULockOnTargetModuleBase>> Modules;
 
 public:
-	/**
-	 * When the InputBuffer overflows the threshold by the player's input, the switch method will be called.
-	 * Player's input will be converted to a 2D direction vector.
-	 * Buffer resets to 0.f when the InputBuffer overflows and at certain intervals (can be filled below).
-	 *
-	 * i.e. if the threshold = 0.5f, then for it to overflow, the player input (2D vector length) should have a minimum average value of 0.5f per sec.
-	 * 
-	 * Attention! Be careful with BufferResetFrequency low values. It can reset the buffer too early.
-	 * 
-	 * You can override GetInputBufferThreshold() for a particular analog controller.
-	 * 
-	 * This field only works with the default native player's input handling via the SwitchTargetYaw/Pitch() methods.
-	 * You can write your own input handler and call the SwitchTargetManual() method with an input direction.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching", meta = (ClampMin = 0.f, UIMin = 0.f))
+	/** When the InputBuffer overflows the threshold by the input, the switch method will be called. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Player Input", meta = (ClampMin = 0.f, UIMin = 0.f))
 	float InputBufferThreshold;
 
-	/** 
-	 * InputBuffer resets to 0.f at this frequency.
-	 * 
-	 * This field only works with the default native player's input handling via the SwitchTargetYaw/Pitch() methods.
-	 * You can write your own input handler and call the SwitchTargetManual() method with an input direction.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching", meta = (ClampMin = 0.1f, UIMin = 0.1, Units="s"))
+	/** InputBuffer is reset to 0.f at this frequency. Be careful with very small values. The InputBuffer can be reset too soon. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Player Input", meta = (ClampMin = 0.1f, UIMin = 0.1, Units="s"))
 	float BufferResetFrequency;
 
-	/** 
-	 * Player input axes are clamped by these values.
-	 * X - min value, Y - max value. Usually these values should be opposite.
-	 * 
-	 * This field only works with the default native player's input handling via the SwitchTargetYaw/Pitch() methods.
-	 * You can write your own input handler and call the SwitchTargetManual() method with an input direction.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching")
+	/** Player input axes are clamped by these values. X - min value, Y - max value. Usually these values should be opposite. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Player Input")
 	FVector2D ClampInputVector;
 
-	/** 
-	 * Switching to a new Target isn't allowed after a successful switch for a while.
-	 * 
-	 * This field only works with the default native player's input handling via the SwitchTargetYaw/Pitch() methods.
-	 * You can write your own input handler and call the SwitchTargetManual() method with a input direction.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching", meta = (ClampMin = 0.f, UIMin = 0.f, Units="s"))
-	float SwitchDelay;
+	/** Block the Input for a while after the player has successfully performed an action. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Player Input", meta = (ClampMin = 0.f, UIMin = 0.f, Units="s"))
+	float InputProcessingDelay;
 
-	/** 
-	 * Freeze the filling of the InputBuffer until the player input reaches the UnfreezeThreshold after a successful switch. 
-	 * 
-	 * This field only works with the default native player's input handling via the SwitchTargetYaw/Pitch() methods.
-	 * You can write your own input handler and call the SwitchTargetManual() method with an input direction.
-	 */
-	UPROPERTY(EditAnywhere, Category = "Target Switching")
-	bool bFreezeInputAfterSwitch;
+	/** Freeze InputBuffer filling until the input reaches the UnfreezeThreshold after a successful switch. */
+	UPROPERTY(EditDefaultsOnly, Category = "Player Input")
+	uint8 bFreezeInputAfterSwitch : 1;
 
-	/** 
-	 * Unfreeze the filling of the InputBuffer if the player input is less than a threshold.
-	 * 
-	 * This field only works with the default native player's input handling via the SwitchTargetYaw/Pitch() methods.
-	 * You can write your own input handler and call the SwitchTargetManual() method with an input direction.
-	 */
-	UPROPERTY(EditAnywhere, Category = "Target Switching", meta = (ClampMin = 0.f, UIMin = 0.f, EditCondition = "bFreezeInputAfterSwitch", EditConditionHides))
+	/** Unfreeze InputBuffer filling if the input is less than the threshold. */
+	UPROPERTY(EditDefaultsOnly, Category = "Player Input", meta = (ClampMin = 0.f, UIMin = 0.f, EditCondition = "bFreezeInputAfterSwitch", EditConditionHides))
 	float UnfreezeThreshold;
 
-#if WITH_EDITORONLY_DATA
-	//@TODO: Maybe move all debug settings to project/editor settings.
-public:
-	/** Display some information about the state of the Targeting. */
-	UPROPERTY(EditDefaultsOnly, Category = "Debug")
-	bool bShowTargetInfo = false;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (HideAlphaChannel, EditCondition = "bShowTargetInfo", EditConditionHides))
-	FColor DebugInfoColor = FColor::Black;
-#endif
-
-/*******************************************************************************************/
-/*******************************  Accessors   **********************************************/
-/*******************************************************************************************/
-public:
-	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Accessors")
-	void SetTargetHandler(UTargetHandlerBase* NewTargetHandler);
-
-	UFUNCTION(BlueprintPure, Category = "Lock On Target Component|Accessors")
-	UTargetHandlerBase* GetTargetHandler() const { return TargetHandlerImplementation; }
-
-	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Accessors")
-	void SetTickWhileUnlockedEnabled(bool bTickWhileUnlocked = false);
-
-	UFUNCTION(BlueprintPure, Category = "Lock On Target Component|Accessors")
-	bool IsTickWhileUnlockedEnabled() const { return bDisableTickWhileUnlocked; }
-
-/*******************************************************************************************/
-/*******************************  Delegates  ***********************************************/
-/*******************************************************************************************/
-public:
 	/** Called when the Target is locked. */
-	UPROPERTY(BlueprintAssignable, Category = "LockOnTarget")
+	UPROPERTY(BlueprintAssignable, Transient, Category = "LockOnTargetComponent")
 	FOnTargetLocked OnTargetLocked;
 
-	/** Called if the Target isn't found after finding or switching. */
-	UPROPERTY(BlueprintAssignable, Category = "LockOnTarget")
-	FOnTargetNotFound OnTargetNotFound;
-
 	/** Called when the Target is unlocked. */
-	UPROPERTY(BlueprintAssignable, Category = "LockOnTarget")
+	UPROPERTY(BlueprintAssignable, Transient, Category = "LockOnTargetComponent")
 	FOnTargetUnlocked OnTargetUnlocked;
 
-/*******************************************************************************************/
-/*******************************  BP Methods  **********************************************/
-/*******************************************************************************************/
-public:
-	/** Main method of capturing and clearing a Target. */
-	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Player Input")
-	void EnableTargeting();
+	/** Called when the Socket is changed within the current Target, if it has more than 1. */
+	UPROPERTY(BlueprintAssignable, Transient, Category = "LockOnTargetComponent")
+	FOnSocketChanged OnSocketChanged;
+	
+	/** Called if the Target isn't found after finding. */
+	UPROPERTY(BlueprintAssignable, Transient, Category = "LockOnTargetComponent")
+	FOnTargetNotFound OnTargetNotFound;
 
-	/** Feed Yaw input to the InputBuffer. */
-	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Player Input")
-	void SwitchTargetYaw(float YawAxis);
-
-	/** Feed Pitch input to the InputBuffer. */
-	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Player Input")
-	void SwitchTargetPitch(float PitchAxis);
-
-	/** Manual Target switching. Useful for custom input processing. */
-	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Manual Handling")
-	bool SwitchTargetManual(FVector2D PlayerInput);
-
-	/** Manual Target capturing. Useful for custom input processing. */
-	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Manual Handling", meta = (AutoCreateRefTerm = "Socket"))
-	void SetLockOnTargetManual(AActor* NewTarget, const FName& Socket = NAME_None);
-
-	/** Manual Target clearing. Useful for custom input processing. */
-	UFUNCTION(BlueprintCallable, Category = "Lock On Target Component|Manual Handling")
-	void ClearTargetManual(bool bAutoFindNewTarget = false);
-
-	/** Is any Target locked. */
-	UFUNCTION(BlueprintPure, Category = "Lock On Target Component")
-	bool IsTargetLocked() const { return bIsTargetLocked; }
-
-	/** Currently locked Target. */
-	UFUNCTION(BlueprintPure, Category = "Lock On Target Component")
-	AActor* GetTarget() const;
-
-	/** Current locked Target's TargetingHelperComponent. */
-	UFUNCTION(BlueprintPure, Category = "Lock On Target Component")
-	UTargetingHelperComponent* GetHelperComponent() const { return PrivateTargetInfo.HelperComponent; }
-
-	/** Targeting duration in sec. */
-	UFUNCTION(BlueprintPure, Category = "Lock On Target Component")
-	float GetTargetingDuration() const { return TargetingDuration; }
-
-	/** WorldLocation of the locked Target's socket. */
-	UFUNCTION(BlueprintPure, Category = "Lock On Target Component")
-	FVector GetCapturedLocation(bool bWithOffset = false) const;
-
-	/** Captured socket, if exists. NAME_None otherwise. */
-	UFUNCTION(BlueprintPure, Category = "Lock On Target Component")
-	FName GetCapturedSocket() const { return PrivateTargetInfo.SocketForCapturing; }
-
-/*******************************************************************************************/
-/*******************************  BP Overridable  ******************************************/
-/*******************************************************************************************/
-protected:
-
-	/** Override the InputBufferThreshold for a particular analog controller. */
-	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget")
-	float GetInputBufferThreshold() const;
-
-/*******************************************************************************************/
-/*******************************  Native   *************************************************/
-/*******************************************************************************************/
 private:
-	//Information about the captured Target. Contains TargetingHelperComponent and Socket.
-	UPROPERTY(Transient)
-	FTargetInfo PrivateTargetInfo;
+	//Information about the captured Target (TargetingHelperComponent and Socket).
+	UPROPERTY(Transient, ReplicatedUsing = OnTargetInfoUpdated)
+	FTargetInfo CurrentTargetInternal;
 
-	//Has this component captured the Target.
-	bool bIsTargetLocked;
-
-	//The time during which the Target is captured. 
+	//The time during which the Target is captured.
 	UPROPERTY(Transient, Replicated)
 	float TargetingDuration;
 
-private:
-	/** Network. */
+	//Is any HelperComponent is captured.
+	uint8 bIsTargetLocked : 1;
 
-	//Replicated TargetInfo which is locally compared with the PrivateTargetInfo.
-	UPROPERTY(Transient, ReplicatedUsing = OnTargetInfoUpdated)
-	FTargetInfo Rep_TargetInfo;
+public: /** UActorComponent overrides */
 
-	//Main method which controls the Target state.
-	UFUNCTION()
-	void OnTargetInfoUpdated();
+	virtual void BeginPlay() override;
+	virtual void EndPlay(EEndPlayReason::Type EndPlayReason) override;
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	//Sends the desired Target to the server.
+public: /** Class Main Interface */
+
+	/** Main method of capturing and clearing a Target. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Player Input")
+	void EnableTargeting();
+
+	/** Feed Yaw input to the InputBuffer. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Player Input")
+	void SwitchTargetYaw(float YawAxis);
+
+	/** Feed Pitch input to the InputBuffer. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Player Input")
+	void SwitchTargetPitch(float PitchAxis);
+
+public: /** Manual Target handling */
+
+	/** Manual Target switching. Useful for custom input processing. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Manual Handling")
+	void SwitchTargetManual(FVector2D PlayerInput);
+
+	/** Manual Target capturing. Useful for custom input processing. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Manual Handling", meta = (AutoCreateRefTerm = "Socket"))
+	void SetLockOnTargetManual(AActor* NewTarget, FName Socket = NAME_None);
+
+	/** 
+	 * Manual Target clearing. Useful for custom input processing. 
+	 * If bAutoFindTarget is used then mark the current Target somehow as 'can't be targeted' otherwise it can be captured again.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Manual Handling")
+	void ClearTargetManual(bool bAutoFindNewTarget = false);
+
+private: /** Processing the Target */
+
+	//Performs to find the Target.
+	virtual void FindTarget(FVector2D OptionalInput = FVector2D(0.f));
+
+	//Used to reduce the number of reliable calls to the server.
+	void ProcessTargetHandlerResult(const FTargetInfo& TargetInfo);
+
+	//Can continue to capture the Target.
+	bool CanContinueTargeting();
+
+	//Updates the CurrentTargetInternal locally and sends it to the server.
+	void UpdateTargetInfo(const FTargetInfo& TargetInfo);
+
+	//Sets the desired Target on the server.
 	UFUNCTION(Server, Reliable /*, WithValidation */)
 	void Server_UpdateTargetInfo(const FTargetInfo& TargetInfo);
 
-private:
-	/** Capturing the Target. */
+	//Main method which controls the Target state.
+	UFUNCTION()
+	void OnTargetInfoUpdated(const FTargetInfo& OldTarget);
 	
-	//Updates Rep_TargetIndo locally and sends to the server.
-	void UpdateTargetInfo(const FTargetInfo& TargetInfo);
+	void CaptureTarget(const FTargetInfo& Target);
+	void ReleaseTarget(const FTargetInfo& Target);
 
-	//Called to capture the Target.
-	virtual void SetLockOnTargetNative();
+	//Called to change the Target's socket (if the Target has > 1 socket).
+	virtual void UpdateTargetSocket(FName OldSocket);
 	
-	//Called to release the Target.
-	virtual void ClearTargetNative();
+private: /** Input processing */
 
-	//Called to change the Target's socket (if the Target has > 1 sockets).
-	virtual void UpdateTargetSocket();
-	
-private:
-	/** Finding and Switching. */
-	
-	//Called when the Owner performs to find the Target.
-	virtual void FindTarget();
-
-	//Called when the Owner performs to switch the Target.
-	virtual bool SwitchTarget(FVector2D PlayerInput);
-
-	//Called during tick to check the Target validity.
-	bool CanContinueTargeting() const;
-
-private:
-	/** Processing Input. */
-	FTimerHandle SwitchDelayHandler;
+	FTimerHandle InputProcessingDelayHandler;
 	FTimerHandle BufferResetHandler;
 	FVector2D InputBuffer;
 	FVector2D InputVector;
 	mutable bool bInputFrozen;
 
-	void ProcessAnalogInput();
+	void ProcessAnalogInput(float DeltaInput);
+	bool IsInputDelayActive() const;
+	void ActivateInputDelay();
 	bool CanInputBeProcessed(float PlayerInput) const;
 	void ClearInputBuffer();
 
+public: /** Modules */
+
+	/** Get all modules associated with the component. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Modules")
+	const TArray<ULockOnTargetModuleBase*>& GetAllModules() const;
+
+	/** Find a module by class. Complexity O(n). */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Modules", meta = (DeterminesOutputType = ModuleClass))
+	ULockOnTargetModuleBase* FindModuleByClass(TSubclassOf<ULockOnTargetModuleBase> ModuleClass) const;
+
+	template<typename Class>
+	typename TEnableIf<TIsModule_V<Class>, Class>::Type* FindModuleByClass()
+	{
+		return static_cast<Class*>(FindModuleByClass(Class::StaticClass()));
+	}
+
+	/** Create and Initialize a new Module. Complexity amortized constant. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Modules", meta = (DeterminesOutputType = ModuleClass))
+	ULockOnTargetModuleBase* AddModuleByClass(TSubclassOf<ULockOnTargetModuleBase> ModuleClass);
+
+	template<typename Class>
+	typename TEnableIf<TIsModule_V<Class>, Class>::Type* AddModuleByClass()
+	{
+		return static_cast<Class*>(AddModuleByClass(Class::StaticClass()));
+	}
+
+	/** Deinitialize and Destroy a module by class. Complexity O(n). */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Modules")
+	bool RemoveModuleByClass(TSubclassOf<ULockOnTargetModuleBase> ModuleClass);
+
+	template<typename Class>
+	typename TEnableIf<TIsModule_V<Class>, bool>::Type RemoveModuleByClass()
+	{
+		return RemoveModuleByClass(Class::StaticClass());
+	}
+
+	/** Deinitialize and Destroy all modules. Complexity O(n). */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Modules")
+	void RemoveAllModules();
+
 private:
-	/** Tick calculations. */
-	void TickControlRotationCalc(float DeltaTime, const FVector& TargetLocation);
-	void TickOwnerRotationCalc(float DeltaTime, const FVector& TargetLocation);
+	void UpdateModules(float DeltaTime);
 	
-public:
-	/**  Helpers Methods. */
+public: /** Misc */
+
+	/** Set the CanCaptureTarget state. If set to false while locked then will unlock the Target. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent")
+	void SetCanCaptureTarget(bool bInCanCaptureTarget);
+
+	/** Can capture any Target. */
+	bool GetCanCaptureTarget() const { return bCanCaptureTarget; };
+
+	/** Set a new TargetHandler by ref. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent")
+	void SetTargetHandler(UTargetHandlerBase* NewTargetHandler);
+
+	/** Get current TargetHandler implementation. */
+	UTargetHandlerBase* GetTargetHandler() const { return TargetHandlerImplementation; }
+
+	/** Create, assign and return (for setup purposes) a new TargetHandler from class. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent", meta = (DeterminesOutputType = TargetHandlerClass))
+	UTargetHandlerBase* SetTargetHandlerByClass(TSubclassOf<UTargetHandlerBase> TargetHandlerClass);
+
+	template<typename Class>
+	typename TEnableIf<TIsModule_V<Class>, Class>::Type* SetTargetHandlerByClass()
+	{
+		SetTargetHandlerByClass(Class::StaticClass());
+	}
+
+	/** Is any Target locked. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
+	bool IsTargetLocked() const { return bIsTargetLocked; };
+
+	/** Current locked Target's TargetingHelperComponent. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
+	UTargetingHelperComponent* GetHelperComponent() const { return CurrentTargetInternal.HelperComponent; }
+
+	/** Captured socket, if exists. NAME_None otherwise. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
+	FName GetCapturedSocket() const { return CurrentTargetInternal.SocketForCapturing; }
+
+	/** Currently locked Actor. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
+	AActor* GetTarget() const;
+
+	/** Targeting duration in sec. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
+	float GetTargetingDuration() const { return TargetingDuration; }
+
+	/** World location of the locked Target's socket. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
+	FVector GetCapturedSocketLocation() const;
+
+	/** World location of the locked Target's socket with offset. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
+	FVector GetCapturedFocusLocation() const;
+
+public: /** Internal Misc */
+
 	AController* GetController() const;
-	bool IsOwnerLocallyControlled() const;
+	bool IsLocallyControlled() const;
 	APlayerController* GetPlayerController() const;
-	FRotator GetRotationToTarget() const;
 	FRotator GetOwnerRotation() const;
 	FVector GetOwnerLocation() const;
 	FRotator GetCameraRotation() const;
@@ -356,13 +301,4 @@ public:
 	FVector GetCameraUpVector() const;
 	FVector GetCameraForwardVector() const;
 	FVector GetCameraRightVector() const;
-
-/*******************************************************************************************/
-/******************************* Debug and Editor Only  ************************************/
-/*******************************************************************************************/
-#if WITH_EDITORONLY_DATA
-private:
-	//Display and visualize debug info.
-	virtual void DebugOnTick() const;
-#endif
 };

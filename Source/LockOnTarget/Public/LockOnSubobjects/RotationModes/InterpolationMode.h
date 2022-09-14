@@ -6,13 +6,11 @@
 #include "InterpolationMode.generated.h"
 
 /**
- * Interpolation Rotation Mode.
- * Returns the interpolated rotation.
+ * Returns an interpolated rotation from the InstigatorLocation to the TargetLocation specified in GetRotation().
  * 
- * GetRotation() should be overridden.
  * @see URotationModeBase.
  */
-UCLASS(Blueprintable, ClassGroup = (LockOnTarget))
+UCLASS(Blueprintable)
 class LOCKONTARGET_API UInterpolationMode : public URotationModeBase
 {
 	GENERATED_BODY()
@@ -20,6 +18,7 @@ class LOCKONTARGET_API UInterpolationMode : public URotationModeBase
 public:
 	UInterpolationMode();
 
+	/**  */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interpolation", meta = (UIMin = 0.f, ClampMin = 0.f, Units="deg"))
 	float InterpolationSpeed;
 

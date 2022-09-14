@@ -1,6 +1,6 @@
 // Copyright 2022 Ivan Baktenkov. All Rights Reserved.
 
-#include "Utilities/Structs.h"
+#include "TargetInfo.h"
 #include "TargetingHelperComponent.h"
 
 /**

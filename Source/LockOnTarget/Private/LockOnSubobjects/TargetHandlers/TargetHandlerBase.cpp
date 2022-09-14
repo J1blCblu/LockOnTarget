@@ -1,33 +1,18 @@
 // Copyright 2022 Ivan Baktenkov. All Rights Reserved.
 
 #include "LockOnSubobjects/TargetHandlers/TargetHandlerBase.h"
-#include "Utilities/Structs.h"
+#include "LockOnTargetDefines.h"
 
-FTargetInfo UTargetHandlerBase::FindTarget_Implementation()
+FTargetInfo UTargetHandlerBase::FindTarget_Implementation(FVector2D PlayerInput)
 {
+	LOG_ERROR("Unimplemented method is called.");
 	unimplemented();
 	return {};
 }
 
-bool UTargetHandlerBase::SwitchTarget_Implementation(FTargetInfo& TargetInfo, FVector2D PlayerInput)
-{
-	unimplemented();
-	TargetInfo.Reset();
-	return false;
-}
-
 bool UTargetHandlerBase::CanContinueTargeting_Implementation()
 {
+	LOG_ERROR("Unimplemented method is called.");
 	unimplemented();
 	return false;
-}
-
-void UTargetHandlerBase::OnTargetLockedNative()
-{
-	OnTargetLocked();
-}
-
-void UTargetHandlerBase::OnTargetUnlockedNative()
-{
-	OnTargetUnlocked();
 }

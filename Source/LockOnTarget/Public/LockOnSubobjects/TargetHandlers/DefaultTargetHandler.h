@@ -3,19 +3,145 @@
 #pragma once
 
 #include "LockOnSubobjects/TargetHandlers/TargetHandlerBase.h"
-#include "Utilities/Enums.h"
+#include "Engine/EngineTypes.h"
 #include <type_traits>
 #include "DefaultTargetHandler.generated.h"
 
 struct FTargetInfo;
+struct FTargetModifier;
+struct FTargetContext;
+struct FFindTargetContext;
+class UDefaultTargetHandler;
 class ULockOnTargetComponent;
 class UTargetingHelperComponent;
 
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnModifierCalculated, const FFindTargetContext& /*TargetContext*/, float /*Modifier*/);
+
+/** Unlock reasons that are currently supported by DefaultTargetHandler. */
+UENUM(meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
+enum class EUnlockReasonBitmask : uint8
+{
+	TargetInvalidation			= 1 << 0 UMETA(ToolTip = "Auto find a new Target when the previous was invalidated (e.g. HelperComponent or its owner is destroyed)."),
+	OutOfLostDistance			= 1 << 1 UMETA(ToolTip = "Auto find a new Target when the previous has left the lost distance."),
+	LineOfSightFail				= 1 << 2 UMETA(ToolTip = "Auto find a new Target when the Line of Sight timer has finished. If bLineOfSightCheck is enabled and LostTargetDelay > 0.f."),
+	HelperComponentDiscard		= 1 << 3 UMETA(ToolTip = "Auto find a new Target when the CanBeCaptured() method has returned false (Can be overridden) in the TargetingHelperComponent."),
+	CapturedSocketInvalidation	= 1 << 4 UMETA(ToolTip = "Auto find a new Target when the previous captured socket has been removed using the RemoveSocket() method.")
+	//Reserved					= 1 << 5 UMETA(ToolTip = "")
+};
+
 /**
- * Native default implementation of TargetHandler based on calculation and comparison of Targets modifiers.
- * The best Target will have the least modifier.
+ * Holds a modifier associated with the Target.
+ */
+USTRUCT()
+struct LOCKONTARGET_API FTargetModifier
+{
+	GENERATED_BODY()
+
+public:
+	FTargetModifier() = default;
+	FTargetModifier(const FTargetContext& TargetContext);
+
+public:
+	UPROPERTY()
+	FTargetInfo TargetInfo;
+
+	UPROPERTY()
+	float Modifier = FLT_MAX;
+};
+
+/**
+ * Holds contextual information about the Target.
+ */
+USTRUCT(BlueprintType)
+struct LOCKONTARGET_API FTargetContext
+{
+	GENERATED_BODY()
+
+public:
+	FTargetContext() = default;
+
+public:
+	//Actually the Target associated with the context. 
+	UPROPERTY(BlueprintReadOnly)
+	TObjectPtr<UTargetingHelperComponent> HelperComponent = nullptr;
+
+	//Socket associated with the Target.
+	UPROPERTY(BlueprintReadOnly)
+	FName SocketName = NAME_None;
+	
+	//Socket's world location.
+	UPROPERTY(BlueprintReadOnly)
+	FVector SocketWorldLocation = FVector::ZeroVector;
+
+	//The Socket's world location projected on the screen. Make sure to check bIsScreenPositionValid before access. 
+	//Basically isn't calculated if bScreenCapture is not used or while not switching the Target.
+	UPROPERTY(BlueprintReadOnly)
+	FVector2D SocketScreenPosition = FVector2D::ZeroVector;
+
+	//Can the ScreenPosition actually be used for calculations
+	UPROPERTY(BlueprintReadOnly)
+	bool bIsScreenPositionValid = false;
+};
+
+/**
+ * Holds contextual information about current Target finding.
+ */
+USTRUCT(BlueprintType)
+struct LOCKONTARGET_API FFindTargetContext
+{
+	GENERATED_BODY()
+
+public:
+	FFindTargetContext() = default;
+	FFindTargetContext(UDefaultTargetHandler* Owner, ULockOnTargetComponent* LockOn, FVector2D PlayerInput);
+
+public:
+	//TargetHandler that has created this context.
+	UPROPERTY(BlueprintReadOnly)
+	TObjectPtr<UDefaultTargetHandler> ContextOwner = nullptr;
+
+	//TargetHandler owner.
+	UPROPERTY(BlueprintReadOnly)
+	TObjectPtr<ULockOnTargetComponent> LockOnTargetComponent = nullptr;
+
+	//Raw player input. Basically available only while switching the Target.
+	UPROPERTY(BlueprintReadOnly)
+	FVector2D PlayerRawInput = FVector2D(0.);
+	
+	//Current Target context. Basically available only while switching the Target.
+	UPROPERTY(BlueprintReadOnly)
+	FTargetContext CurrentTarget;
+
+	//Iterative Target context. Treat as a candidate that can potentially be a new Target.
+	UPROPERTY(BlueprintReadOnly)
+	FTargetContext IteratorTarget;
+
+	//Is any Target is locked by the LockOnTargetComponent.
+	UPROPERTY(BlueprintReadOnly)
+	bool bIsSwitchingTarget = false;
+
+public:
+	void PrepareIteratorTargetContext(FName Socket);
+
+private:
+	bool VectorToScreenPosition(const FVector& Location, FVector2D& OutScreenPosition) const;
+};
+
+/**
+ * Native default implementation of the TargetHandler based on calculation and comparison of Targets modifiers.
+ * The best Target will have the least modifier. Targets with several sockets will have several modifiers.
  * 
- * You can override CalculateTargetModifier() to custom sort a set of Targets.
+ * Find Target execution flow:
+ * - FindTargetInternal() - Iterates over TargetingHelperComponents (hereinafter a Target), prepares context.
+ *		- IsTargetable() - Checks wether the Target can be processed.
+ *		- [BP] IsTargetableCustom() - Checks whether the Target is within the capture radius.
+ *		- FindBestSocket() - Iterates over Target's sockets and finds the best one by calculating a modifier that will be associated with the Target.
+ *			- [C++] PreModifierCalculation() - Checks wether the modifier should be calculated for the Socket.
+ *			- [BP] CalculateModifier() - Calculates the modifier for the Socket.
+ *			- [BP] PostModifierCalculation() - Will be called only if the Socket's modifier is lesser than the best Target's modifier. Expensive operations are intended to be here, e.g. Line of Sight is processed here.
+ * 
+ * (where [BP] means that a method can overridden in BP/C++, [C++] respectively for C++ only.)
+ * 
  * @see UTargetHandlerBase.
  */
 UCLASS(Blueprintable, ClassGroup = (LockOnTarget))
@@ -25,35 +151,21 @@ class LOCKONTARGET_API UDefaultTargetHandler : public UTargetHandlerBase
 
 public:
 	UDefaultTargetHandler();
+	friend class FGDC_LockOnTarget; //To avoid ignoring PostModifierCalculationCheck() if the modifier isn't small enough.
 	static_assert(TIsSame<std::underlying_type_t<EUnlockReasonBitmask>, uint8>::Value, "UDefaultTargetHandler::AutoFindTargetFlags must be of the same type as the EUnlockReasonBitmask underlying type.");
 
-public:
-	/** TargetHandlerBase */
-	virtual FTargetInfo FindTarget_Implementation() override;
-	virtual bool SwitchTarget_Implementation(FTargetInfo& TargetInfo, FVector2D PlayerInput) override;
-	virtual bool CanContinueTargeting_Implementation() override;
-	virtual void OnTargetUnlockedNative() override;
+public: /** Config */
 
-public:
-	/** 
-	 * Auto find a new Target after a certain flag fails.
-	 * If proper flag is set, try to find a new Target.
-	 * i.e. if the 'TargetInvalidation' flag is only set then it will try to find a new Target after the Target destruction. 
-	 * If the Target went out of LostDistance then it won't try to find a new Target.
-	 */
+	/** Auto find a new Target on a certain flag failure. If the Target is destroyed and the TargetInvalidation flag is set then try to find a new Target. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (BitMask, BitmaskEnum = "EUnlockReasonBitmask"))
 	uint8 AutoFindTargetFlags;
-
-	/** Multiply the CaptureRadius in the HelperComponent. May be useful for the progression. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (UIMin = 0.f, ClampMin = 0.f, Units="x"))
-	float TargetCaptureRadiusModifier;
 
 	/** Capture a Target that is only on the screen. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings")
 	bool bScreenCapture;
 
 	/**
-	 * Narrows the screen borders(x and y) from the both sides by a percentage when trying to find a new Target.
+	 * Narrows the screen borders (x and y) from the both sides by a percentage when trying to find a new Target.
 	 * Useful for not capturing a Target near the screen borders. 
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (EditCondition = "bScreenCapture", EditConditionHides))
@@ -70,172 +182,113 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f, EditCondition = "!bScreenCapture", EditConditionHides, Units="deg"))
 	float CaptureAngle;
 
-	/** Should modifier use a distance to the Target or a default modifier = 1000.f. */
-	UPROPERTY(EditAnywhere, Category = "Default Solver")
-	bool bCalculateDistance;
+	/** Increases the influence of the distance to the Target's socket on the final modifier. */
+	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f, Units = "x"))
+	float DistanceWeight;
 
-	/**
-	 * The Default Solver that calculates the Target modifier. (The target with the smallest modifier will be captured as a result).
-	 * Overriding the CalculateTargetModifier() method without calling the parent method will have no effect.
-	 * 
-	 * Angle Weight determines the impact of the angle modifier between the vector to the Target socket and the camera forward vector (basically without camera rotation clamping) while finding the best Target.
-	 * i.e. a smaller value will reduce the angle impact on the resulting modifier and will increase the impact of the distance weight to the Target.
-	 * 
-	 * To find the closest Target this value should be 0.f. 
-	 */
+	/** Increases the influence of the angle to the Target's socket on the final modifier. */
 	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f, Units="x"))
 	float AngleWeightWhileFinding;
 
-	/**
-	 * The Default Solver that calculates the Target modifier. (The target with the smallest modifier will be captured as a result).
-	 * Overriding the CalculateTargetModifier() method without calling the parent method will have no effect.
-	 * 
-	 * Angle Weight determines the impact of the angle modifier between the vector to the Target socket and the vector to the captured Target socket while switching to a new Target.
-	 * i.e. a smaller value will reduce the angle impact on the resulting modifier and will increase the impact of the distance weight to the Target.
-	 * 
-	 * To find the closest Target this value should be 0.f.
-	 */
+	/** Increases the influence of the angle to the Target's socket on the final modifier. */
 	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f, Units="x"))
 	float AngleWeightWhileSwitching;
 
-	/** 
-	 * The Default Solver that calculates the Target modifier. (The target with the smallest modifier will be captured as a result).
-	 * Overriding the CalculateTargetModifier() method without calling the parent method will have no effect.
-	 * 
-	 * Only have affect when switching to a new Target.
-	 * This parameter will increase the impact of the player's input direction.
-	 * The best Target will be the closest one to the trigonometric angle (the player input direction).
-	 * i.e. moving the mouse/stick up(x = 0, y = 1) the analog input will be converted to the trigonometric angle 90deg.
-	 */
+	/** Increases the influence of the player's input to the Target's socket on the final modifier (while any Target is locked). */
 	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f, Units="x"))
-	float TrigonometricInputWeight;
+	float PlayerInputWeight;
 
-	/** 
-	 * Rotate the camera forward vector (== screen center) in the Angle calculations. 
-	 * May be useful for finding the closest Target to the rotated camera forward vector. 
-	 * 
-	 * |2 2 2 2 2|-->|2 1 0 1 2|
-	 * |2 1 1 1 2|-->|2 1 1 1 2|
-	 * |2 1 0 1 2|-->|2 2 2 2 2|
-	 * |2 1 1 1 2|-->|3 3 3 3 3|
-	 * |2 2 2 2 2|-->|4 4 4 4 4|
-	 * 
-	 * On the picture the CameraRotationOffsetForCalculations pitch value is changed => The Best Target(0) is now higher on the screen.
-	 */
+	/** Transform the view rotation (basically a camera rotation) by this rotator. Used to adjust the screen center for the AngleWeightWhileFinding. */
+	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (EditCondition = "AngleWeightWhileFinding > 0"))
+	FRotator ViewRotationOffset;
 
-	UPROPERTY(EditAnywhere, Category = "Default Solver")
-	FRotator CameraRotationOffsetForCalculations;
-
-	/** 
-	 * Targets in this range will be processed.
-	 * The TrigonometricAngleRange is added to both sides of the player analog input direction.
-	 * The Player input is converted to a 2D space direction.
-	 * The trigonometric Angle is calculated from the screen right X axis (x = 1, y = 0) and the player input direction.
-	 * 
-	 * i.e. player Analog input = 90deg = (x = 0, y = 1) and this value = 30deg,
-	 * then the capturing trigonometric range(from, to) will be [60 , 120] => 60deg.
-	 * Any Target outside this trigonometric range [60, 120] i.e. down side off the screen (270deg)
-	 * can't be captured and the Target modifier won't be calculated for it.
-	 */
+	/** Targets within this angle range will be processed while switching. Added to both sides of the player's input direction (in screen space). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f, Units="deg"))
-	float TrigonometricAngleRange;
+	float AngleRange;
 
 	/**
-	 * Does a Target should be traced before capturing it.
-	 * While the Target is locked, checks for a successful trace to it.
-	 * If the captured Target is out of the Line Of Sight, the timer begins working.
-	 * The Target may return to the Line Of Sight and stop the timer.
+	 * Whether the Target's socket should be traced. Will regularly trace to the captured socket.
+	 * If the Target is out of the Line Of Sight, the timer starts running.
+	 * The Target can return to the Line Of Sight and stop the timer.
 	 * The Target will be unlocked after the timer expires.
 	 */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Line Of Sight")
 	bool bLineOfSightCheck;
 
-	/** Object channels for the trace. If trace hits something then the Line of Sight fails. Target and Owner will be ignored. */
+	/** Object channels to trace. If the trace hits something then the Line of Sight fails. Target and Owner will be ignored. */
 	UPROPERTY(EditDefaultsOnly, Category = "Line Of Sight", meta = (EditCondition = "bLineOfSightCheck", EditConditionHides))
 	TArray<TEnumAsByte<ECollisionChannel>> TraceObjectChannels;
 
 	/** 
-	 * Timer Delay after which the Target will be unlocked. 
-	 * Timer stops if the Target returns to the Line Of Sight.
-	 * If <= 0.f, the Target won't be unlocked. This means the Line of Sight is used only to find the Target.
+	 * Timer Delay on expiration of which the Target will be unlocked. Timer stops if the Target returns to the Line Of Sight.
+	 * If <= 0.f, the captured Target won't be traced regularly, but will only be traced while finding a Target.
 	 */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Line Of Sight", meta = (EditCondition = "bLineOfSightCheck", EditConditionHides, Units="s"))
 	float LostTargetDelay;
 
-#if WITH_EDITORONLY_DATA
+	/** Multiply the CaptureRadius in the HelperComponent. May be useful for the progression. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Misc", meta = (UIMin = 0.f, ClampMin = 0.f, Units = "x"))
+	float TargetCaptureRadiusModifier;
 
-	/** Display a Target temporary modifier for debugging. */
-	UPROPERTY(EditDefaultsOnly, Category = "Debug")
-	bool bDisplayModifier = false;
+	/** Will be called when any Target's modifier is calculated. Basically used by FGDC_LockOnTarget to simulate the TargetHandler. */
+	FOnModifierCalculated OnModifierCalculated;
 
-	/** Modifier Color. */
-	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (HideAlphaChannel, EditCondition = "bDisplayModifier", EditConditionHides))
-	FColor ModifierColor = FColor::Black;
+protected: /** TargetHandlerBase overrides */
+	virtual FTargetInfo FindTarget_Implementation(FVector2D PlayerInput) override;
+	virtual bool CanContinueTargeting_Implementation() override;
+	virtual void OnTargetUnlocked(UTargetingHelperComponent* UnlockedTarget, FName Socket) override;
 
-	/** Modifier display duration. */
-	UPROPERTY(EditDefaultsOnly, Category = "Debug", meta = (EditCondition = "bDisplayModifier", EditConditionHides, ClampMin = 0.f, UIMin = 0.f, Units="s"))
-	float ModifierDuration = 3.f;
-
-#endif
-
-/*******************************************************************************************/
-/*******************************  BP Overridable  ******************************************/
-/*******************************************************************************************/
 protected:
-	/**
-	 * Used to find the best Target from the sorted Targets.
-	 * Can be overridden via BP.
-	 * 
-	 * The best Target = modifier -> 0. (The clossest to zero)
-	 * If the player input doesn't exist then its value < 0.f (when not switching).
-	 * 
-	 * @param Location - Target's socket location.
-	 * @param TargetHelperComponent - HelperComponent is used to provide an useful info.
-	 * @param PlayerInput - Player trigonometric input(0, 360). If >= 0 then the player performs to switch the Target/socket.
-	 * @return - Target modifier should be > 0.f.
-	 */
-	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Default Target Handler")
-	float CalculateTargetModifier(const FVector& Location, UTargetingHelperComponent* TargetHelperComponent, float PlayerInput) const;
+	/** The actual implementation. */
+	FTargetInfo FindTargetInternal(FFindTargetContext& TargetContext);
+	
+	/** Whether the HelperComponent can be captured. Provides only necessary checks. */
+	bool IsTargetable(UTargetingHelperComponent* HelpComp) const;
 
-	/**
-	 * Used for CaptureRadius checks by default.
-	 * 
-	 * Can be overridden to provide custom rules.
-	 * If you want to keep CaptureRadius checks, make sure to call the parent method.
-	 * Note that the LineOfSight is handled in the native private method after this method returns true.
-	 */
+	/** Can be overridden to provide a custom target check. Provides the CaptureRadius checks by default. */
 	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Default Target Handler")
 	bool IsTargetableCustom(UTargetingHelperComponent* HelperComponent) const;
 
-/*******************************************************************************************/
-/*******************************  Native   *************************************************/
-/*******************************************************************************************/
-private:
-	/** Finding target */
-	FTargetInfo FindTargetNative(float PlayerInput = -1.f) const;
-	bool IsTargetable(UTargetingHelperComponent* HelpComp) const;
-	bool IsSocketValid(const FName& Socket, UTargetingHelperComponent* HelperComponent, float PlayerInput, const FVector& SocketLocation) const;
+	/** Native implementation of the above. */
+	virtual bool IsTargetableCustom_Implementation(UTargetingHelperComponent* HelperComponent) const;
 
-	bool SwitchTargetNative(FTargetInfo& TargetInfo, float PlayerInput) const;
-	TPair<FName, float> TrySwitchSocket(float PlayerInput) const;
+	/** Finds the best socket within the Target. */
+	void FindBestSocket(FTargetModifier& TargetModifier, FFindTargetContext& TargetContext);
 
-private:
-	/** Line Of Sight handling */
-	FTimerHandle LOSDelayHandler;
+	/** Checks whether the modifier should be calculated for the Socket. */
+	virtual bool PreModifierCalculationCheck(const FFindTargetContext& TargetContext) const;
+
+	/** Calculates the modifier for the Socket. Will be called multiple times if the Target has multiple sockets. */
+	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Default Target Handler")
+	float CalculateTargetModifier(const FFindTargetContext& TargetContext) const;
+
+	/** Native implementation of the above. */
+	virtual float CalculateTargetModifier_Implementation(const FFindTargetContext& TargetContext) const;
+
+	/** Expensive operations are intended to be here, e.g. Line of Sight is processed here. */
+	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Default Target Handler")
+	bool PostModifierCalculationCheck(const FFindTargetContext& TargetContext) const;
+
+	/** Native implementation of the above. */
+	virtual bool PostModifierCalculationCheck_Implementation(const FFindTargetContext& TargetContext) const;
+
+protected: /** Misc */
+	bool HandleTargetClearing(EUnlockReasonBitmask UnlockReason);
+	float GetAngleWeight() const;
+	bool IsTargetOnScreen(FVector2D ScreenPosition) const;
+	FVector2D GetScreenOffset() const;
+
+protected: /** Line of Sight handling */
 	virtual void StartLineOfSightTimer();
 	virtual void StopLineOfSightTimer();
-	virtual void OnLineOfSightFail();
+	virtual void OnLineOfSightExpiration();
 	bool LineOfSightTrace(const AActor* const Target, const FVector& Location) const;
-
+	
 private:
-	/** Helpers methods */
-	bool HandleTargetClearing(EUnlockReasonBitmask UnlockReason);
+	FTimerHandle LOSDelayHandler;
 
-/*******************************************************************************************/
-/******************************* Debug and Editor Only *************************************/
-/*******************************************************************************************/
-#if WITH_EDITORONLY_DATA
+#if WITH_EDITOR
 private:
-	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& Event);
+	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& Event) override;
 #endif
 };

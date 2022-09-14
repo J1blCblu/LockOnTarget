@@ -2,58 +2,40 @@
 
 #include "TargetingHelperComponent.h"
 #include "LockOnTargetComponent.h"
-#include "LockOnTarget/LockOnTarget.h"
+#include "LockOnTargetDefines.h"
 #include "TemplateUtilities.h"
-
-#include "Components/WidgetComponent.h"
 #include "Components/MeshComponent.h"
-#include "Engine/AssetManager.h"
-#include "UObject/SoftObjectPath.h"
+#include "Engine/SimpleConstructionScript.h"
 
 UTargetingHelperComponent::UTargetingHelperComponent()
-	: bCanBeTargeted(true)
+	: bCanBeCaptured(true)
 	, MeshName(NAME_None)
 	, CaptureRadius(1700.f)
 	, LostOffsetRadius(100.f)
 	, MinimumCaptureRadius(100.f)
-	, TargetOffset(0.f)
-	, bEnableWidget(true)
-	, WidgetOffset(0.f)
-	, bAsyncLoadWidget(true)
-	, bWidgetWasInitialized(false)
+	, FocusPoint(EFocusPoint::Default)
+	, FocusPointCustomSocket(NAME_None)
+	, bFocusPointOffsetInCameraSpace(false)
+	, FocusPointOffset(0.f)
+	, bWantsDisplayWidget(true)
+	, WidgetRelativeOffset(0.f)
 	, bWantsMeshInitialization(true)
 {
-	//Tick isn't allowed due to the purpose of this component which acts as both storage and subject (for listeners).
+	//Tick isn't allowed due to the purpose of this component which acts as a storage.
 	PrimaryComponentTick.bCanEverTick = false;
 	PrimaryComponentTick.bStartWithTickEnabled = false;
 
-	//Request InitializeComponent().
-	bWantsInitializeComponent = true;	//@TODO: Maybe wrap with the preprocessor #if !WITH_SERVER_CODE to exclude widget creation on the server.
-
 	Sockets.Add(NAME_None);
-
-	FRichCurve* Curve = HeightOffsetCurve.GetRichCurve();
-	Curve->SetKeyInterpMode(Curve->AddKey(0.f, 50.f), RCIM_Cubic);
-	Curve->SetKeyInterpMode(Curve->AddKey(2000.f, -400.f), RCIM_Cubic);
-
-	FSoftClassPath WidgetPath = FString(TEXT("WidgetBlueprint'/LockOnTarget/WBP_Target.WBP_Target_C'"));
-	WidgetClass = TSoftClassPtr<UUserWidget>(WidgetPath);
-}
-
-void UTargetingHelperComponent::InitializeComponent()
-{
-	Super::InitializeComponent();
-
-	if (!GIsEditor || GIsPlayInEditorWorld)
-	{
-		InitWidgetComponent();
-	}
 }
 
 void UTargetingHelperComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	InitMeshComponent();
+
+	if (bWantsMeshInitialization)
+	{
+		DesiredMeshComponent = MeshName == NAME_None ? GetRootComponent() : FindComponentByName<UMeshComponent>(GetOwner(), MeshName);
+	}
 }
 
 void UTargetingHelperComponent::EndPlay(EEndPlayReason::Type Reason)
@@ -64,176 +46,63 @@ void UTargetingHelperComponent::EndPlay(EEndPlayReason::Type Reason)
 	for (ULockOnTargetComponent* Invader : Invaders)
 	{
 		OnOwnerReleased.Broadcast(Invader);
+		K2_OnReleased(Invader);
 	}
 
 	Invaders.Empty();
 }
 
-/*******************************************************************************************/
-/*******************************  Component Interface  *************************************/
-/*******************************************************************************************/
+bool UTargetingHelperComponent::CanBeCaptured(const ULockOnTargetComponent* Instigator) const
+{
+	return  bCanBeCaptured && (Sockets.Num() > 0) && CanBeCapturedCustom(Instigator);
+}
 
-void UTargetingHelperComponent::CaptureTarget(ULockOnTargetComponent* const Instigator, const FName& Socket)
+bool UTargetingHelperComponent::CanBeCapturedCustom_Implementation(const ULockOnTargetComponent* Instigator) const
+{
+	return true;
+}
+
+void UTargetingHelperComponent::CaptureTarget(ULockOnTargetComponent* Instigator, FName Socket)
 {
 	if (IsValid(Instigator))
 	{
 		bool bHasAlreadyBeen = false;
 		Invaders.Add(Instigator, &bHasAlreadyBeen);
 
-		UpdateWidget(Socket, Instigator);
-
 		if (!bHasAlreadyBeen)
 		{
+			checkf(Sockets.Contains(Socket), TEXT("Captured socket doesn't exists in the Target."));
 			OnOwnerCaptured.Broadcast(Instigator, Socket);
-			OnCaptured();
+			K2_OnCaptured(Instigator, Socket);
 		}
-	}
-}
-
-void UTargetingHelperComponent::ReleaseTarget(ULockOnTargetComponent* const Instigator)
-{
-	if (IsTargeted() && IsValid(Instigator) && Invaders.Remove(Instigator))
-	{
-		OnOwnerReleased.Broadcast(Instigator);
-		HideWidget(Instigator);
-		OnReleased();
-	}
-}
-
-/*******************************************************************************************/
-/*******************************  Widget Handling  *****************************************/
-/*******************************************************************************************/
-
-void UTargetingHelperComponent::InitWidgetComponent()
-{
-	if (bEnableWidget)
-	{
-		WidgetComponent = NewObject<UWidgetComponent>(this, MakeUniqueObjectName(this, UWidgetComponent::StaticClass(), TEXT("LOT_Widget")));
-
-		if (IsValid(WidgetComponent))
-		{
-			WidgetComponent->RegisterComponent();
-			WidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
-			WidgetComponent->SetVisibility(false);
-			WidgetComponent->SetDrawAtDesiredSize(true);
-			bWidgetWasInitialized = true;
-		}
-	}
-}
-
-bool UTargetingHelperComponent::IsWidgetInitialized() const
-{
-	return bWidgetWasInitialized && ensureMsgf(IsValid(WidgetComponent), TEXT("TargetingHelperComponent: WidgetComponent was initialized but is invalid in the '%s'. Maybe it was removed manually."), *GetNameSafe(GetOwner()));
-}
-
-void UTargetingHelperComponent::UpdateWidget(const FName& Socket, const ULockOnTargetComponent* const Instigator)
-{
-#if LOC_INSIGHTS
-	SCOPED_NAMED_EVENT(LOT_UpdatingWidget, FColor::White);
-#endif
-
-	if (!IsWidgetInitialized())
-	{
-		return;
-	}
-
-	if (!IsValid(Instigator) || !Instigator->IsOwnerLocallyControlled())
-	{
-		return;
-	}
-
-	if(WidgetClass)
-	{
-		SetWidgetClassOnWidgetComponent();
 	}
 	else
 	{
-		if (WidgetClass.IsNull())
-		{
-			UE_LOG(LogLockOnTarget, Warning, TEXT("TargetingHelperComponent: Widget class is nullptr. Fill the WidgetClass field in the %s Actor or disable the bEnableWidget field."), *GetNameSafe(GetOwner()));
-			return;
-		}
-
-		if (WidgetClass.IsPending())
-		{
-			if (bAsyncLoadWidget)
-			{
-				UAssetManager::Get().GetStreamableManager().RequestAsyncLoad(WidgetClass.ToSoftObjectPath(), FStreamableDelegate::CreateUObject(this, &ThisClass::SetWidgetClassOnWidgetComponent));
-			}
-			else
-			{
-				WidgetClass.LoadSynchronous();
-				SetWidgetClassOnWidgetComponent();
-			}
-		}
-	}
-
-	WidgetComponent->AttachToComponent(GetWidgetParentComponent(Socket), FAttachmentTransformRules::SnapToTargetNotIncludingScale, Socket);
-	WidgetComponent->SetRelativeLocation(WidgetOffset);
-	WidgetComponent->SetVisibility(true);
-}
-
-USceneComponent* UTargetingHelperComponent::GetWidgetParentComponent(const FName& Socket) const
-{
-	return OwnerMeshComponent.IsValid() && Socket != NAME_None ? OwnerMeshComponent.Get() : GetRootComponent();
-}
-
-void UTargetingHelperComponent::SetWidgetClassOnWidgetComponent()
-{
-	if (IsWidgetInitialized())
-	{
-		if (WidgetClass.Get())
-		{
-			WidgetComponent->SetWidgetClass(WidgetClass.Get());
-		}
-		else
-		{
-			UE_LOG(LogLockOnTarget, Error, TEXT("TargetingHelperComponent: Failed to load '%s' WidgetClass in the %s"), *WidgetClass.GetLongPackageName(), *GetNameSafe(GetOwner()));
-		}
+		LOG_WARNING("Invalid Instigator. Failed to capture the %s", *GetNameSafe(GetOwner()));
 	}
 }
 
-void UTargetingHelperComponent::HideWidget(const ULockOnTargetComponent* const Instigator)
+void UTargetingHelperComponent::ReleaseTarget(ULockOnTargetComponent* Instigator)
 {
-	if (IsWidgetInitialized() && IsValid(Instigator) && Instigator->IsOwnerLocallyControlled())
+	if (IsCaptured() && IsValid(Instigator) && Invaders.Remove(Instigator))
 	{
-		WidgetComponent->SetVisibility(false);
+		OnOwnerReleased.Broadcast(Instigator);
+		K2_OnReleased(Instigator);
 	}
 }
 
-/*******************************************************************************************/
-/*******************************  Other Methods  *******************************************/
-/*******************************************************************************************/
-
-bool UTargetingHelperComponent::CanBeTargeted_Implementation(ULockOnTargetComponent* Instigator) const
+USceneComponent* UTargetingHelperComponent::GetDesiredMesh() const
 {
-	return bCanBeTargeted && (Sockets.Num() > 0);
+	return DesiredMeshComponent.IsValid() ? DesiredMeshComponent.Get() : GetRootComponent();
 }
 
-bool UTargetingHelperComponent::AddSocket(const FName& Socket)
+FVector UTargetingHelperComponent::GetSocketLocation(FName Socket) const
 {
-	bool bReturn = false;
+	FVector Location{ 0.f };
 
-	if (OwnerMeshComponent.IsValid() && OwnerMeshComponent->DoesSocketExist(Socket))
+	if (DesiredMeshComponent.IsValid() && MeshName != NAME_None)
 	{
-		Sockets.Add(Socket, &bReturn);
-	}
-
-	return bReturn;
-}
-
-bool UTargetingHelperComponent::RemoveSocket(const FName& Socket)
-{
-	return Sockets.Remove(Socket) > 0;
-}
-
-FVector UTargetingHelperComponent::GetSocketLocation(const FName& Socket, bool bWithOffset, const ULockOnTargetComponent* const Instigator) const
-{
-	FVector Location;
-
-	if (OwnerMeshComponent.IsValid() && Socket != NAME_None)
-	{
-		Location = OwnerMeshComponent->GetSocketLocation(Socket);
+		Location = DesiredMeshComponent->GetSocketLocation(Socket);
 	}
 	else if (GetOwner())
 	{
@@ -241,119 +110,180 @@ FVector UTargetingHelperComponent::GetSocketLocation(const FName& Socket, bool b
 	}
 	else
 	{
-		UE_LOG(LogLockOnTarget, Error, TEXT("TargetingHelperComponent: Failed to find a socket location. The owner is invalid."));
-	}
-
-	if (bWithOffset)
-	{
-		AddOffset(Location, Instigator);
+		LOG_WARNING("Failed to calculate the location.");
 	}
 
 	return Location;
 }
 
-void UTargetingHelperComponent::AddOffset(FVector& Location, const ULockOnTargetComponent* const Instigator) const
+FVector UTargetingHelperComponent::GetFocusLocation(const ULockOnTargetComponent* Instigator) const
 {
-	switch (OffsetType)
-	{
-	case EOffsetType::ENone:
-	{
-		break;
-	}
-	case EOffsetType::EConstant:
-	{
-		if (IsValid(Instigator))
-		{
-			Location += TargetOffset.X * Instigator->GetCameraForwardVector();
-			Location += TargetOffset.Y * Instigator->GetCameraRightVector();
-			Location += TargetOffset.Z * Instigator->GetCameraUpVector();
-		}
+	FVector FocusPointLocation{ 0.f };
 
+	switch (FocusPoint)
+	{
+	case EFocusPoint::Default:
+	{
+		FocusPointLocation = GetSocketLocation(IsValid(Instigator) ? Instigator->GetCapturedSocket() : NAME_None);
 		break;
 	}
-	case EOffsetType::EAdaptiveCurve:
+	case EFocusPoint::CustomSocket:
 	{
-		if (IsValid(Instigator))
-		{
-			Location += Instigator->GetCameraUpVector() * HeightOffsetCurve.GetRichCurveConst()->Eval((Location - Instigator->GetOwnerLocation()).Size());
-		}
-
+		FocusPointLocation = GetSocketLocation(FocusPointCustomSocket);
 		break;
 	}
-	case EOffsetType::ECustomOffset:
+	case EFocusPoint::Custom:
 	{
-		Location += GetCustomTargetOffset(Instigator);
+		FocusPointLocation = GetCustomFocusPoint(Instigator);
 		break;
 	}
 	default:
 	{
-		UE_LOG(LogLockOnTarget, Error, TEXT("TargetingHelperComponent: Unknown EOffsetType is discovered."));
+		LOG_ERROR("Unknown EFocusPoint is discovered.");
 		checkNoEntry();
 		break;
 	}
 	}
-}
 
-/*******************************************************************************************/
-/*******************************  Mesh Initialization  *************************************/
-/*******************************************************************************************/
-
-void UTargetingHelperComponent::InitMeshComponent()
-{
-	if (bWantsMeshInitialization)
+	if (bFocusPointOffsetInCameraSpace)
 	{
-		OwnerMeshComponent = FindComponentByName<UMeshComponent>(GetOwner(), MeshName);
+		constexpr FVector::FReal Threshold = 1e-2;
 
-		if (!OwnerMeshComponent.IsValid())
+		if (FocusPointOffset.Z > Threshold || FocusPointOffset.Y > Threshold || FocusPointOffset.X > Threshold)
 		{
-			OwnerMeshComponent = GetFirstMeshComponent();
+			FRotationMatrix RotMatrix(Instigator->GetCameraRotation());
 
-			if (MeshName != NAME_None)
-			{
-				UE_LOG(LogLockOnTarget, Warning, TEXT("TargetingHelperComponent: The MeshComponent named '%s' doesn't exist in the '%s', '%s' will be used instead."), *MeshName.ToString(), *GetNameSafe(GetOwner()), *GetNameSafe(OwnerMeshComponent.Get()));
-			}
+			FocusPointLocation += FocusPointOffset.X * RotMatrix.GetUnitAxis(EAxis::X);
+			FocusPointLocation += FocusPointOffset.Y * RotMatrix.GetUnitAxis(EAxis::Y);
+			FocusPointLocation += FocusPointOffset.Z * RotMatrix.GetUnitAxis(EAxis::Z);
 		}
 	}
+	else
+	{
+		FocusPointLocation += FocusPointOffset;
+	}
+
+	return FocusPointLocation;
 }
 
-void UTargetingHelperComponent::SetMeshComponent(UMeshComponent* NewComponent)
+FVector UTargetingHelperComponent::GetCustomFocusPoint_Implementation(const ULockOnTargetComponent* Instigator) const
 {
-	if (IsValid(NewComponent) && NewComponent != OwnerMeshComponent.Get())
-	{
-		OwnerMeshComponent = NewComponent;
+	LOG_WARNING("Default implementation is called. Please override in child classes.");
+	return FVector{ 0.f };
+}
 
-		if(HasBegunPlay())
-		{
-			//Socket location is updated on every frame so it's safe to change the MeshComponent if the Owner is captured.
-			//But we need to manually update the widget.
-			for(const auto* const Invader : Invaders)
-			{
-				UpdateWidget(Invader->GetCapturedSocket(), Invader);
-			}
-		}
-		else
+bool UTargetingHelperComponent::AddSocket(FName Socket)
+{
+	bool bIsAlreadySet = true;
+
+	if (GetDesiredMesh() && GetDesiredMesh()->DoesSocketExist(Socket))
+	{
+		Sockets.Add(Socket, &bIsAlreadySet);
+	}
+
+	return !bIsAlreadySet;
+}
+
+bool UTargetingHelperComponent::RemoveSocket(FName Socket)
+{
+	return Sockets.Remove(Socket) > 0;
+}
+
+void UTargetingHelperComponent::UpdateDesiredMesh(UMeshComponent* NewComponent)
+{
+	if (IsValid(NewComponent) && NewComponent != DesiredMeshComponent.Get())
+	{
+		DesiredMeshComponent = NewComponent;
+
+		if (!HasBegunPlay())
 		{
 			//Don't initialize MeshComponent by name if it's set before initialization. 
-			bWantsMeshInitialization = 0;
+			bWantsMeshInitialization = false;
 		}
 	}
-}
-
-UMeshComponent* UTargetingHelperComponent::GetFirstMeshComponent() const
-{
-	TInlineComponentArray<UMeshComponent*> ComponentsArray(GetOwner());
-
-	//Exclude the TargetWidget from result.
-	//@TODO: Maybe exclude it by name.
-	UMeshComponent** MeshComponent = ComponentsArray.FindByPredicate([](const auto* const Component)
-		{
-			return !Component->IsA(UWidgetComponent::StaticClass());
-		});
-
-	return MeshComponent ? *MeshComponent : nullptr;
 }
 
 USceneComponent* UTargetingHelperComponent::GetRootComponent() const
 {
 	return GetOwner() ? GetOwner()->GetRootComponent() : nullptr;
 }
+
+#if WITH_EDITOR
+
+TArray<FString> UTargetingHelperComponent::GetAvailableSockets() const
+{
+	//@TODO: Maybe use inline allocator.
+	TArray<FString> AvailableSockets = { FString(TEXT("None")) };
+	AvailableSockets.Reserve(50);
+	const UMeshComponent* Mesh = nullptr;
+
+	if (HasAnyFlags(RF_ArchetypeObject))
+	{
+		//We can't just find components added in the BP editor. We need to find them in BP generated class.
+		//In the actor BP editor an outer is an owner class.
+		if (const UBlueprintGeneratedClass* const BPGC = Cast<UBlueprintGeneratedClass>(GetOuter()))
+		{
+			if (const USimpleConstructionScript* const SCS = BPGC->SimpleConstructionScript)
+			{
+				Mesh = FindComponentByName<UMeshComponent>(SCS->GetComponentEditorActorInstance(), MeshName);
+			}
+		}
+	}
+	else
+	{
+		//Owner, placed in the world, has all components, including those added in BP editor.
+		Mesh = FindComponentByName<UMeshComponent>(GetOwner(), MeshName);
+	}
+
+	if (Mesh)
+	{
+		const TArray<FName> SocketsName = Mesh->GetAllSocketNames();
+
+		for (const FName Socket : SocketsName)
+		{
+			AvailableSockets.Add(Socket.ToString());
+		}
+	}
+
+	return AvailableSockets;
+}
+
+TArray<FString> UTargetingHelperComponent::GetAvailableMeshes() const
+{
+	//@TODO: Maybe use inline allocator.
+	TArray<FString> Meshes = { FString(TEXT("None")) };
+	Meshes.Reserve(10);
+	const AActor* Owner = nullptr;
+
+	if (HasAnyFlags(RF_ArchetypeObject))
+	{
+		//We can't just find components added in the BP editor. We need to find them in BP generated class.
+		//In the actor BP editor an outer is an owner class.
+		if (const UBlueprintGeneratedClass* const BPGC = Cast<UBlueprintGeneratedClass>(GetOuter()))
+		{
+			if (const USimpleConstructionScript* const SCS = BPGC->SimpleConstructionScript)
+			{
+				Owner = SCS->GetComponentEditorActorInstance();
+			}
+		}
+	}
+	else
+	{
+		//Owner, placed in the world, has all components, including those added in BP editor.
+		Owner = GetOwner();
+	}
+
+	const TInlineComponentArray<UMeshComponent*> MeshComponents(Owner);
+
+	for (const UMeshComponent* const MeshComponent : MeshComponents)
+	{
+		if (MeshComponent && !MeshComponent->IsEditorOnly())
+		{
+			Meshes.Add(MeshComponent->GetFName().ToString());
+		}
+	}
+
+	return Meshes;
+}
+
+#endif
