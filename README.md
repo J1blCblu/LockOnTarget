@@ -3,14 +3,14 @@ Fast and Efficient plugin for Unreal Engine which gives the ability to capture t
 The system consist of 2 components which can be extendent and customized in different ways via C++/BP.
 
 ### **LockOnTargetComponent**
-LockOnTargetComponent is a wrapper over the next systems:
+LockOnTargetComponent gives the Owner(Player) an ability to find a Target and store it. Wraps next systems:
  *	Target storage (*TargetingHelperComponent* and *Socket*). Synchronized with the server.
  *	Processing the input. Processed locally.
  *	**TargetHandler** subobject - used for Target handling (find, switch, maintenance). Processed locally.
- *	**RotationMode** subobject - used to get the rotation for the Control/Owner rotation. Mostly processed locally.
+ *  **Modules** - piece of functionality that can be dynamically added/removed.
 
 ### **TargetingHelperComponent**
-Used by the *LockOnTargetComponent* to capture and provide specific information about the Target.
+Represents the Target that the *LockOnTargetComponent* can capture in addition to a specified *Socket*. Has all component's benefits and acts like a Target specific storage.
 
 # Features
 
@@ -25,6 +25,7 @@ Used by the *LockOnTargetComponent* to capture and provide specific information 
  * Various **rotation modes**.
  * Several useful methods and delegates for LockOnTargetComponent and TargetingHelperComponent Owners.
  * Custom rules for capturing the target (e.g. not capturing teammates).
+ * Built-in modules by default (CameraZoom, Widget, Control/OwnerRotation).
 
 ### **Network Design Philosophy**
 **Lock On Target** is just a system which finds a Target, stores and synchronizes it over the network. Finding the Target is not a quick operation to process it on the server for each player. Due to this and network relevancy opportunities (not relevant Target doesn't exist in the world) finding the Target processed **locally on the owning client.**  
