@@ -5,13 +5,6 @@
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 
-DECLARE_LOG_CATEGORY_EXTERN(LogLockOnTarget, All, All);
-
-namespace LOTGlobals
-{
-	extern FString PluginVersion; //Def LockOnTarget.cpp
-}
-
 class FLockOnTargetModule : public IModuleInterface
 {
 public:
@@ -35,6 +28,8 @@ public:
 	{
 		return FModuleManager::Get().IsModuleLoaded("LockOnTarget");
 	}
+
+	static FString GetPluginVersion();
 
 public:
 	/** IModuleInterface implementation */

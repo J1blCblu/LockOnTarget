@@ -5,7 +5,9 @@
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 
-DECLARE_LOG_CATEGORY_EXTERN(Log_LOC_Editor, All, All);
+DECLARE_LOG_CATEGORY_EXTERN(LogLockOnTargetEditor, All, All);
+
+class FSlateStyleSet;
 
 class FLockOnTargetEditorModule : public IModuleInterface
 {
@@ -16,6 +18,7 @@ public:
 	virtual void ShutdownModule() override;
 
 private:
-	TSharedPtr<class FSlateStyleSet> LockOnStyleSet;
-	TSharedPtr<FSlateStyleSet> TargetingHelperStyleSet;
+	void RegisterStyles();
+	void UnregisterStyles();
+	TSharedPtr<FSlateStyleSet> LockOnTargetStyleSet;
 };

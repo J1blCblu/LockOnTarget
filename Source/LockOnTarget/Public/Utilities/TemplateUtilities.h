@@ -4,14 +4,25 @@
 
 #include "CoreMinimal.h"
 
+/** Modules */
+
+template<typename T>
+constexpr bool TIsModule_V = TPointerIsConvertibleFromTo<T, ULockOnTargetModuleBase>::Value;
+
+template<typename T>
+constexpr bool TIsRotationModule_V = TPointerIsConvertibleFromTo<T, URotationModule>::Value;
+
+template<typename T>
+constexpr bool TIsTargetHandler_V = TPointerIsConvertibleFromTo<T, UTargetHandlerBase>::Value;
+
+/** Misc */
+
 template<typename T>
 constexpr bool TIsComponentPointer_V = TPointerIsConvertibleFromTo<T, UActorComponent>::Value;
 
 template<typename T>
-T* FindComponentByName(AActor* Actor, const FName& Name)
+typename TEnableIf<TIsComponentPointer_V<T>, T>::Type* FindComponentByName(AActor* Actor, FName Name)
 {
-	static_assert(TIsComponentPointer_V<T>, "'T' template parameter for FindComponentByName must be derived from UActorComponent.");
-
 	T* ReturnComponent = nullptr;
 
 	if (IsValid(Actor) && Name != NAME_None)
@@ -19,7 +30,7 @@ T* FindComponentByName(AActor* Actor, const FName& Name)
 		TInlineComponentArray<T*> Components(Actor);
 
 		T** FoundComponent = Components.FindByPredicate(
-			[&Name](const auto* const Comp)
+			[Name](const auto* const Comp)
 			{
 				return Comp->GetFName() == Name;
 			}

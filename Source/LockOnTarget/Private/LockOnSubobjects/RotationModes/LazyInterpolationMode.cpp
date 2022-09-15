@@ -1,76 +1,65 @@
 // Copyright 2022 Ivan Baktenkov. All Rights Reserved.
 
 #include "LockOnSubobjects/RotationModes/LazyInterpolationMode.h"
-#include "LockOnTargetComponent.h"
-#include "Kismet/KismetMathLibrary.h"
-#include "GameFramework/Actor.h"
-#include "Utilities/LOTC_BPLibrary.h"
+#include "LOT_Math.h"
 
-#if WITH_EDITORONLY_DATA
-#include "DrawDebugHelpers.h"
-#endif
+constexpr float MinInterpSpeedRatio = 0.05f;
 
 ULazyInterpolationMode::ULazyInterpolationMode()
 	: BeginInterpAngle(3.7f)
 	, StopInterpAngle(2.7f)
-	, SmoothingAngleRange(7.f)
-	, MinInterpSpeedRatio(0.05f)
-	, bLazyInterpolationInProgress(false)
+	, SmoothingRange(10.f)
+	, bInterpolationInProgress(false)
 {
+	InterpolationSpeed = 20.f;
 }
 
 FRotator ULazyInterpolationMode::GetRotation_Implementation(const FRotator& CurrentRotation, const FVector& InstigatorLocation, const FVector& TargetLocation, float DeltaTime)
 {
-	FRotator NewRotation = GetRotationToTarget(InstigatorLocation, TargetLocation);
+	FRotator DesiredRotation = GetRotationUnclamped(InstigatorLocation, TargetLocation);
+	const float DeltaAngle = LOT_Math::GetAngle(DesiredRotation.Vector(), CurrentRotation.Vector());
+	ClampPitch(DesiredRotation);
 
-#if WITH_EDITORONLY_DATA
-	DrawDebugInfo(NewRotation);
-#endif
-
-	float AdjustedInterpSpeed = InterpolationSpeed;
-
-	if (!CanLazyInterpolate(FRotator(NewRotation), CurrentRotation, AdjustedInterpSpeed))
+	if (CanInterpolate(DeltaAngle) || IsPitchClamped(DesiredRotation))
 	{
-		return CurrentRotation;
+		DesiredRotation = FMath::RInterpTo(CurrentRotation, DesiredRotation, DeltaTime, GetInterpolationSpeed(DeltaAngle));
+		ApplyRotationAxes(CurrentRotation, DesiredRotation);
+	}
+	else
+	{
+		DesiredRotation = CurrentRotation;
 	}
 
-	NewRotation = FMath::RInterpTo(CurrentRotation, NewRotation, DeltaTime, AdjustedInterpSpeed);
-
-	ApplyRotationAxes(CurrentRotation, NewRotation);
-
-	return NewRotation;
+	return DesiredRotation;
 }
 
-bool ULazyInterpolationMode::CanLazyInterpolate_Implementation(const FRotator& NewRotation, const FRotator& CurrentRotation, float& InterpSpeed)
+bool ULazyInterpolationMode::CanInterpolate(float DeltaAngle) const
 {
-	//@TODO: Consider that Pitch or Yaw flags may not be used, so the interpolation won't stop in some cases.
-	float Angle = ULOTC_BPLibrary::GetAngleDeg(NewRotation.Vector(), CurrentRotation.Vector());
-
-	if (bLazyInterpolationInProgress)
+	if (bInterpolationInProgress)
 	{
-		if (Angle <= StopInterpAngle)
+		if (DeltaAngle <= StopInterpAngle)
 		{
-			bLazyInterpolationInProgress = false;
+			bInterpolationInProgress = false;
 		}
 	}
 	else
 	{
-		if (Angle > BeginInterpAngle)
+		if (DeltaAngle > BeginInterpAngle)
 		{
-			bLazyInterpolationInProgress = true;
+			bInterpolationInProgress = true;
 		}
 	}
 
-	if (bLazyInterpolationInProgress)
-	{
-		//Interp speed ratio clamping
-		InterpSpeed *= FMath::Clamp((Angle - StopInterpAngle) / SmoothingAngleRange, MinInterpSpeedRatio, 1.f);
-	}
-
-	return bLazyInterpolationInProgress;
+	return bInterpolationInProgress;
 }
 
-#if WITH_EDITORONLY_DATA
+float ULazyInterpolationMode::GetInterpolationSpeed(float DeltaAngle) const
+{
+	//TODO: If pitch is clamped then we can increase interpolation speed.
+	return InterpolationSpeed * FMath::Clamp((DeltaAngle - StopInterpAngle) / FMath::Max(SmoothingRange, 1.f), MinInterpSpeedRatio, 1.f);
+}
+
+#if WITH_EDITOR
 
 void ULazyInterpolationMode::PostEditChangeProperty(FPropertyChangedEvent& Event)
 {
@@ -89,40 +78,6 @@ void ULazyInterpolationMode::PostEditChangeProperty(FPropertyChangedEvent& Event
 		{
 			BeginInterpAngle = FMath::Clamp(StopInterpAngle + 1.f, 0.f, 180.f);
 		}
-	}
-}
-
-void ULazyInterpolationMode::DrawDebugInfo(const FRotator& NewRotation) const
-{
-	if (bVisualizeOnControlRotation && GetWorld())
-	{
-		const FVector LineOrigin = GetLockOn()->GetCameraLocation();
-
-		FVector FocusPointLocation = GetLockOn()->GetCapturedLocation(true);
-
-		//Adjust the focus point location if the final rotation is clamped via the PitchClamp.
-		if(FMath::IsNearlyEqual(NewRotation.Pitch, PitchClamp.Y) || FMath::IsNearlyEqual(NewRotation.Pitch, PitchClamp.X))
-		{
-			const float DeltaPitch = (NewRotation - FRotationMatrix::MakeFromX(FocusPointLocation - LineOrigin).Rotator()).Pitch - OffsetRotation.Pitch;
-			FocusPointLocation = FocusPointLocation + (GetLockOn()->GetCameraUpVector() * (FocusPointLocation - LineOrigin).Size() * FMath::Sin(DeltaPitch * (PI / 180.f)));
-		}
-
-		const FVector ForwardVector = (GetLockOn()->GetCameraRotation().Quaternion() * OffsetRotation.GetInverse().Quaternion()).Rotator().Vector();
-		const FVector LazyFocusPoint = LineOrigin + (ForwardVector * ((FocusPointLocation - LineOrigin) | ForwardVector));
-
-		DrawDebugSphere(GetWorld(), LazyFocusPoint, 8.f, 15, FColor::Yellow, false, 0.f, 7, 2.f);
-		DrawDebugLine(GetWorld(), FocusPointLocation, LazyFocusPoint, FColor::Yellow, false, 0.f, 4, 6.f);
-
-		float OuterRadius = (FocusPointLocation - LineOrigin).Size() * FMath::Tan(BeginInterpAngle * (PI / 180.f));
-		float InnerRadius = (FocusPointLocation - LineOrigin).Size() * FMath::Tan(StopInterpAngle * (PI / 180.f));
-		float SmoothRadius = (FocusPointLocation - LineOrigin).Size() * FMath::Tan((StopInterpAngle + SmoothingAngleRange) * (PI / 180.f));
-
-		const FVector RightVector = GetLockOn()->GetCameraRightVector();
-		const FVector UpVector = GetLockOn()->GetCameraUpVector();
-
-		DrawDebugCircle(GetWorld(), FocusPointLocation, OuterRadius, 24, FColor::Yellow, false, 0.f, 4, 3.f, RightVector, UpVector, true);
-		DrawDebugCircle(GetWorld(), FocusPointLocation, InnerRadius, 24, FColor::Red, false, 0.f, 3, 3.f, RightVector, UpVector, false);
-		DrawDebugCircle(GetWorld(), FocusPointLocation, SmoothRadius, 24, FColor::Blue, false, 0.f, 3, 3.f, RightVector, UpVector, false);
 	}
 }
 

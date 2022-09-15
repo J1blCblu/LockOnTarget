@@ -1,6 +1,7 @@
 // Copyright 2022 Ivan Baktenkov. All Rights Reserved.
 
 #include "LockOnTarget.h"
+#include "LockOnTargetDefines.h"
 
 #include "Interfaces/IPluginManager.h"
 #include "PluginDescriptor.h"
@@ -10,18 +11,19 @@
 
 DEFINE_LOG_CATEGORY(LogLockOnTarget);
 
-FString LOTGlobals::PluginVersion;
-
 void FLockOnTargetModule::StartupModule()
 {
-	TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin("LockOnTarget");
-	LOTGlobals::PluginVersion = Plugin.IsValid() ? Plugin->GetDescriptor().VersionName : TEXT("unavailable");
+	LOG("LockOnTarget(v%s) module startup.", *GetPluginVersion());
 
-	UE_LOG(LogLockOnTarget, Log, TEXT("LockOnTarget(v%s) module startup."), *LOTGlobals::PluginVersion);
-
-#if LOC_INSIGHTS
-	UE_LOG(LogLockOnTarget, Log, TEXT("LockOnTarget uses Unreal Insights."));
+#if LOT_INSIGHTS
+	LOG("LockOnTarget uses Unreal Insights.");
 #endif
+}
+
+FString FLockOnTargetModule::GetPluginVersion()
+{
+	TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin("LockOnTarget");
+	return Plugin.IsValid() ? Plugin->GetDescriptor().VersionName : FString(TEXT("unavailable"));
 }
 
 #undef LOCTEXT_NAMESPACE
