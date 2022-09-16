@@ -6,7 +6,7 @@ The system consist of 2 components which can be extendent and customized in diff
 LockOnTargetComponent gives the Owner(Player) an ability to find a Target and store it. Wraps next systems:
  *	Target storage (*TargetingHelperComponent* and *Socket*). Synchronized with the server.
  *	Processing the input. Processed locally.
- *	**TargetHandler** subobject - used for Target handling (find, switch, maintenance). Processed locally.
+ *	**TargetHandler** subobject - used for Target handling (find, maintenance). Processed locally.
  *  **Modules** - piece of functionality that can be dynamically added/removed.
 
 ### **TargetingHelperComponent**
@@ -19,7 +19,7 @@ Represents the Target that the *LockOnTargetComponent* can capture in addition t
  * Network synchronization.
  * Line of Sight handling.
  * Custom *Widget* for each Target.
- * Switch Targets in any direction (in screen space).
+ * Switch to a new Target in any direction (in screen space).
  * Flexible input processing settings.
  * Multiple settings for Target capturing.
  * Various **rotation modes**.
