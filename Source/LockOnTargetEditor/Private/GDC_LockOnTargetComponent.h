@@ -13,7 +13,6 @@ class APlayerController;
 class ULockOnTargetComponent;
 class UTargetingHelperComponent;
 class UDefaultTargetHandler;
-class URotationModeBase;
 
 /**
  * Ref: GameplayDebuggerCategory_AI and GameplayDebuggerCategory_EQS
@@ -44,7 +43,6 @@ private:
 	TArray<TPair<FVector, float>, TInlineAllocator<50>> Modifiers;
 	float SimulatedPlayerInput;
 	uint8 bSimulateTargetHandler : 1;
-	uint8 bSimulateRotationModes : 1;
 
 private: /**  */
 
@@ -56,10 +54,6 @@ private: /**  */
 
 	//Current Target text.
 	void DisplayCurrentTarget(FGameplayDebuggerCanvasContext& CanvasContext) const;
-	
-	//RotationMode
-	void SimulateRotationModes(FGameplayDebuggerCanvasContext& CanvasContext);
-	void DrawAxesTile(FGameplayDebuggerCanvasContext& CanvasContext, URotationModeBase* RotationMode, FVector2D TileCenter, const FRotator& CurrentRotation, const FVector& LocationFrom, const FString& TileTitle);
 
 	//TargetHandler
 	void SimulateTargetHandler(FGameplayDebuggerCanvasContext& CanvasContext);
@@ -75,7 +69,6 @@ private: /** Input */
 	void OnKeyPressedSwitchTarget();
 	void OnKeyPressedAdd();
 	void OnKeyPressedSubtract();
-	void OnKeyPressedSimulateRotationModes();
 
 private: /** Misc */
 	FVector2D TrigonometricToVector2D(float TrigAngle, bool bInvertYAxis = false) const;
