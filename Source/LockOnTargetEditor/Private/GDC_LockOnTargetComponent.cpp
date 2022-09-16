@@ -7,10 +7,8 @@
 #include "TargetingHelperComponent.h"
 #include "LockOnTargetComponent.h"
 #include "LockOnTargetEditor.h"
-#include "LockOnSubobjects/RotationModes/RotationModeBase.h"
 #include "LockOnSubobjects/TargetHandlers/DefaultTargetHandler.h"
 #include "LockOnSubobjects/LockOnTargetModuleBase.h"
-#include "LockOnSubobjects/Modules/RotationModules.h"
 #include "LOT_Math.h"
 
 #include "InputCoreTypes.h"
@@ -30,7 +28,6 @@ FGDC_LockOnTarget::FGDC_LockOnTarget()
 	: LockOn(nullptr)
 	, SimulatedPlayerInput(0.f)
 	, bSimulateTargetHandler(false)
-	, bSimulateRotationModes(false)
 {
 	//SetDataPackReplication(&RepData);
 	bShowOnlyWithDebugActor = false;
@@ -52,9 +49,6 @@ FGDC_LockOnTarget::FGDC_LockOnTarget()
 	//4
 	const FGameplayDebuggerInputHandlerConfig SubtractKeyConfig(TEXT("Subtract Input"), EKeys::Subtract.GetFName());
 	BindKeyPress(SubtractKeyConfig, this, &FGDC_LockOnTarget::OnKeyPressedSubtract);
-	//5
-	const FGameplayDebuggerInputHandlerConfig MKeyConfig(TEXT("Simulate Rotation Mode"), EKeys::M.GetFName());
-	BindKeyPress(MKeyConfig, this, &FGDC_LockOnTarget::OnKeyPressedSimulateRotationModes);
 }
 
 void FGDC_LockOnTarget::DrawData(APlayerController* Controller, FGameplayDebuggerCanvasContext& CanvasContext)
@@ -69,7 +63,6 @@ void FGDC_LockOnTarget::DrawData(APlayerController* Controller, FGameplayDebugge
 
 			DisplayDebugInfo(CanvasContext);
 			DisplayCurrentTarget(CanvasContext);
-			SimulateRotationModes(CanvasContext);
 			SimulateTargetHandler(CanvasContext);
 		}
 	}
@@ -112,16 +105,6 @@ void FGDC_LockOnTarget::DisplayDebugInfo(FGameplayDebuggerCanvasContext& CanvasC
 			CanvasContext.Printf(TEXT("Press '{yellow}%s{white}' to switch the Target with the simulated input."), *GetInputHandlerDescription(2));
 			CanvasContext.Printf(TEXT("Press '{yellow}%s/%s{white}' to change the simulated input."), *GetInputHandlerDescription(3), *GetInputHandlerDescription(4));
 		}
-	}
-
-	bool bHasRotationModules = LockOn->Modules.FindByPredicate([](const ULockOnTargetModuleBase* const Module)
-		{
-			return Cast<URotationModule>(Module);
-		}) != nullptr;
-
-	if (LockOn->IsTargetLocked() && bHasRotationModules)
-	{
-		CanvasContext.Printf(TEXT("Press '{yellow}%s{white}' to simulate the Rotation Modules."), *GetInputHandlerDescription(5));
 	}
 }
 
@@ -193,75 +176,6 @@ void FGDC_LockOnTarget::DisplayCurrentTarget(FGameplayDebuggerCanvasContext& Can
 			OverheadContext.PrintAt(ScreenLoc.X - (SizeX * 0.5f), ScreenLoc.Y - (SizeY * 1.2f), ActorDesc);
 		}
 	}
-}
-
-void FGDC_LockOnTarget::SimulateRotationModes(FGameplayDebuggerCanvasContext& CanvasContext)
-{
-	if (!bSimulateRotationModes || !LockOn->IsTargetLocked())
-	{
-		return;
-	}
-
-	const float SizeX = static_cast<const float>(CanvasContext.Canvas->SizeX);
-	const float SizeY = static_cast<const float>(CanvasContext.Canvas->SizeY);
-	const float TileOffsetX = 120.f;
-
-	//@TODO: Support all RotationModules. Not only Owner and Control.
-
-	if (UControlRotationModule* const Module = LockOn->FindModuleByClass<UControlRotationModule>())
-	{
-		if (URotationModeBase* const RotationMode = Module->RotationMode)
-		{
-			AController* const Controller = LockOn->GetController();
-			const FRotator& ControlRotation = Controller->GetControlRotation();
-			const FVector LocationFrom = LockOn->GetCameraLocation();
-			DrawAxesTile(CanvasContext, RotationMode, { SizeX / 2.f + TileOffsetX, SizeY - 150.f }, ControlRotation, LocationFrom, *GetNameSafe(Module));
-		}
-	}
-
-	if (UOwnerRotationModule* const Module = LockOn->FindModuleByClass<UOwnerRotationModule>())
-	{
-		if(URotationModeBase* const RotationMode = Module->RotationMode)
-		{
-			const FRotator& OwnerRotation = LockOn->GetOwnerRotation();
-			const FVector LocationFrom = LockOn->GetOwnerLocation();
-			DrawAxesTile(CanvasContext, RotationMode, { SizeX / 2.f - TileOffsetX, SizeY - 150.f }, OwnerRotation, LocationFrom, *GetNameSafe(Module));
-		}
-	}
-}
-
-void FGDC_LockOnTarget::DrawAxesTile(FGameplayDebuggerCanvasContext& CanvasContext, URotationModeBase* RotationMode, FVector2D TileCenter, const FRotator& CurrentRotation, const FVector& LocationFrom, const FString& TileTitle)
-{
-	const float DeltaTime = CanvasContext.World->GetDeltaSeconds();
-	const FVector& TargetLocation = LockOn->GetCapturedFocusLocation();
-	const FRotator FinalRotation = RotationMode->URotationModeBase::GetRotation_Implementation(CurrentRotation, LocationFrom, TargetLocation, DeltaTime);
-	const FRotator DesiredRotation = RotationMode->GetRotation(CurrentRotation, LocationFrom, TargetLocation, DeltaTime);
-	FRotator DeltaRot = FinalRotation - DesiredRotation;
-	DeltaRot.Normalize();
-
-	auto DrawAxes = [&CanvasContext](URotationModeBase* RotationMode, FVector2D Center, float HalfLen, const FLinearColor& Color = FLinearColor::White, float Thickness = 0.f)
-	{
-		//X Axis
-		FCanvasLineItem LineX{ FVector2D{ Center.X - HalfLen, Center.Y }, FVector2D{ Center.X + HalfLen, Center.Y } };
-		LineX.SetColor(Color);
-		LineX.LineThickness = Thickness;
-		CanvasContext.Canvas->DrawItem(LineX);
-
-		//Y Axis
-		FCanvasLineItem LineY{ FVector2D{ Center.X, Center.Y - HalfLen }, FVector2D{ Center.X, Center.Y + HalfLen } };
-		LineY.SetColor(Color);
-		LineY.LineThickness = Thickness;
-		CanvasContext.Canvas->DrawItem(LineY);
-	};
-
-	const float ParentAxisHalfSize = 100.f;
-	const FVector2D DeltaAxes{ FMath::Clamp(FMath::Clamp(DeltaRot.Yaw, -90.f, 90.f) / 10.f, -1.f, 1.f) * ParentAxisHalfSize, FMath::Clamp(DeltaRot.Pitch / 10.f, -1.f, 1.f) * ParentAxisHalfSize };
-	DrawAxes(RotationMode, TileCenter, ParentAxisHalfSize);
-	DrawAxes(RotationMode, { TileCenter.X - DeltaAxes.X, TileCenter.Y + DeltaAxes.Y }, 10.f, FLinearColor::Yellow, 3.f);
-
-	float TitleLenX, TitleLenY;
-	CanvasContext.MeasureString(TileTitle, TitleLenX, TitleLenY);
-	CanvasContext.PrintAt(TileCenter.X - TitleLenX / 2.f, TileCenter.Y + ParentAxisHalfSize + 5.f, TileTitle);
 }
 
 void FGDC_LockOnTarget::SimulateTargetHandler(FGameplayDebuggerCanvasContext& CanvasContext)
@@ -481,14 +395,6 @@ void FGDC_LockOnTarget::OnKeyPressedSubtract()
 	if (LockOn.IsValid() && LockOn->IsTargetLocked() && bSimulateTargetHandler)
 	{
 		SimulatedPlayerInput -= 5.f;
-	}
-}
-
-void FGDC_LockOnTarget::OnKeyPressedSimulateRotationModes()
-{
-	if (LockOn.IsValid() & LockOn->IsTargetLocked())
-	{
-		bSimulateRotationModes ^= true;
 	}
 }
 

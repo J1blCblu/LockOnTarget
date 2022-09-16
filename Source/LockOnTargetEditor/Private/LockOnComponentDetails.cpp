@@ -13,16 +13,15 @@
 
 TSharedRef<IDetailCustomization> FLockOnComponentDetails::MakeInstance()
 {
-	return MakeShareable(new FLockOnComponentDetails());
+	return MakeShared<FLockOnComponentDetails>();
 }
 
 void FLockOnComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayout)
 {
 	const FText LOT_Documentation = LOCTEXT("LOT_Doc", "Documentation");
 	const FText LOT_Doc_Initial = LOCTEXT("LOT_Doc_Initial", "Initial Setup");
-	const FText LOT_Doc_Full = LOCTEXT("LOT_Doc_Full", "Full Setup");
+	const FText LOT_Doc_LockOn = LOCTEXT("LOT_Doc_LockOn", "Component Overview");
 	const FText LOT_Doc_Debugger = LOCTEXT("LOT_Doc_Debugger", "Debugger");
-	const FText LOT_Doc_Input = LOCTEXT("LOT_Doc_Input", "Input Overview");
 	
 	IDetailCategoryBuilder& DescriptionCategory = DetailLayout.EditCategory(TEXT("Description"), LOCTEXT("LOT_DescRow", "Description"), ECategoryPriority::Important);
 
@@ -50,8 +49,8 @@ void FLockOnComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayou
 			.AutoWidth()
 			[
 				SNew(SHyperlink)
-				.Text(LOT_Doc_Full)
-				.OnNavigate(this, &FLockOnComponentDetails::OnFullSetupNavigate)
+				.Text(LOT_Doc_LockOn)
+				.OnNavigate(this, &FLockOnComponentDetails::OnLockOnOverviewNavigate)
 			]
 
 			+ SHorizontalBox::Slot()
@@ -62,14 +61,6 @@ void FLockOnComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayou
 				.Text(LOT_Doc_Debugger)
 				.OnNavigate(this, &FLockOnComponentDetails::OnDebuggerNavigate)
 			]
-			+ SHorizontalBox::Slot()
-			.Padding(5.f, 2.f)
-			.AutoWidth()
-			[
-				SNew(SHyperlink)
-				.Text(LOT_Doc_Input)
-				.OnNavigate(this, &FLockOnComponentDetails::OnInputNavigate)
-			]
 		];
 }
 
@@ -78,19 +69,14 @@ void FLockOnComponentDetails::OnInitialSetupNavigate()
 	FPlatformProcess::LaunchURL(TEXT("https://github.com/J1blCblu/LockOnTarget/wiki/1.-Initial-Setup"), nullptr, nullptr);
 }
 
-void FLockOnComponentDetails::OnFullSetupNavigate()
+void FLockOnComponentDetails::OnLockOnOverviewNavigate()
 {
-	FPlatformProcess::LaunchURL(TEXT("https://github.com/J1blCblu/LockOnTarget/wiki/2.-Full-Setup"), nullptr, nullptr);
+	FPlatformProcess::LaunchURL(TEXT("https://github.com/J1blCblu/LockOnTarget/wiki/2.-LockOnTargetComponent-Overview"), nullptr, nullptr);
 }
 
 void FLockOnComponentDetails::OnDebuggerNavigate()
 {
-	FPlatformProcess::LaunchURL(TEXT("https://github.com/J1blCblu/LockOnTarget/wiki/2.1-Gameplay-Debugger"), nullptr, nullptr);
-}
-
-void FLockOnComponentDetails::OnInputNavigate()
-{
-	FPlatformProcess::LaunchURL(TEXT("https://github.com/J1blCblu/LockOnTarget/wiki/2.2-Player-Input-Overview"), nullptr, nullptr);
+	FPlatformProcess::LaunchURL(TEXT("https://github.com/J1blCblu/LockOnTarget/wiki/4.-Gameplay-Debugger-Overview"), nullptr, nullptr);
 }
 
 #undef LOCKEXT_NAMESPACE

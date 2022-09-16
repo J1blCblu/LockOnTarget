@@ -12,7 +12,6 @@ public:
 
 public:
 	void OnInitialSetupNavigate();
-	void OnFullSetupNavigate();
+	void OnLockOnOverviewNavigate();
 	void OnDebuggerNavigate();
-	void OnInputNavigate();
 };
