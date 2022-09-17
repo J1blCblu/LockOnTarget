@@ -85,19 +85,19 @@ public:
 	float UnfreezeThreshold;
 
 	/** Called when the Target is locked. */
-	UPROPERTY(BlueprintAssignable, Transient, Category = "LockOnTargetComponent")
+	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent")
 	FOnTargetLocked OnTargetLocked;
 
 	/** Called when the Target is unlocked. */
-	UPROPERTY(BlueprintAssignable, Transient, Category = "LockOnTargetComponent")
+	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent")
 	FOnTargetUnlocked OnTargetUnlocked;
 
 	/** Called when the Socket is changed within the current Target, if it has more than 1. */
-	UPROPERTY(BlueprintAssignable, Transient, Category = "LockOnTargetComponent")
+	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent")
 	FOnSocketChanged OnSocketChanged;
 	
 	/** Called if the Target isn't found after finding. */
-	UPROPERTY(BlueprintAssignable, Transient, Category = "LockOnTargetComponent")
+	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent")
 	FOnTargetNotFound OnTargetNotFound;
 
 private:
