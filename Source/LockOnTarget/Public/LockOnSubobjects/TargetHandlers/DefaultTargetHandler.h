@@ -62,24 +62,24 @@ public:
 
 public:
 	//Actually the Target associated with the context. 
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, Category = "Target Context")
 	TObjectPtr<UTargetingHelperComponent> HelperComponent = nullptr;
 
 	//Socket associated with the Target.
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, Category = "Target Context")
 	FName SocketName = NAME_None;
 	
 	//Socket's world location.
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, Category = "Target Context")
 	FVector SocketWorldLocation = FVector::ZeroVector;
 
 	//The Socket's world location projected on the screen. Make sure to check bIsScreenPositionValid before access. 
 	//Basically isn't calculated if bScreenCapture is not used or while not switching the Target.
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, Category = "Target Context")
 	FVector2D SocketScreenPosition = FVector2D::ZeroVector;
 
 	//Can the ScreenPosition actually be used for calculations
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, Category = "Target Context")
 	bool bIsScreenPositionValid = false;
 };
 
@@ -97,27 +97,27 @@ public:
 
 public:
 	//TargetHandler that has created this context.
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, Category = "Find Target Context")
 	TObjectPtr<UDefaultTargetHandler> ContextOwner = nullptr;
 
 	//TargetHandler owner.
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, Category = "Find Target Context")
 	TObjectPtr<ULockOnTargetComponent> LockOnTargetComponent = nullptr;
 
 	//Raw player input. Basically available only while switching the Target.
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, Category = "Find Target Context")
 	FVector2D PlayerRawInput = FVector2D(0.);
 	
 	//Current Target context. Basically available only while switching the Target.
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, Category = "Find Target Context")
 	FTargetContext CurrentTarget;
 
 	//Iterative Target context. Treat as a candidate that can potentially be a new Target.
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, Category = "Find Target Context")
 	FTargetContext IteratorTarget;
 
 	//Is any Target is locked by the LockOnTargetComponent.
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, Category = "Find Target Context")
 	bool bIsSwitchingTarget = false;
 
 public:
