@@ -108,11 +108,11 @@ public:
 	FVector WidgetRelativeOffset;
 
 	/** Notifies when the Target is captured by a LockOnTargetComponetn. */
-	UPROPERTY(BlueprintAssignable, Transient)
+	UPROPERTY(BlueprintAssignable, Transient, Category = "Targeting Helper")
 	FOnOwnerCaptured OnOwnerCaptured;
 
 	/** Notifies when the Target is released by a LockOnTargetComponetn. */
-	UPROPERTY(BlueprintAssignable, Transient)
+	UPROPERTY(BlueprintAssignable, Transient, Category = "Targeting Helper")
 	FOnOwnerReleased OnOwnerReleased;
 
 private:
