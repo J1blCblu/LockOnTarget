@@ -30,6 +30,9 @@ ULockOnTargetComponent::ULockOnTargetComponent()
 	PrimaryComponentTick.bStartWithTickEnabled = true;
 	PrimaryComponentTick.TickGroup = TG_PostUpdateWork;
 	SetIsReplicatedByDefault(true);
+
+	//Seems work since UE5.0
+	//TargetHandlerImplementation = CreateDefaultSubobject<UDefaultTargetHandler>(TEXT("TargetHandler"));
 }
 
 void ULockOnTargetComponent::BeginPlay()
@@ -38,14 +41,14 @@ void ULockOnTargetComponent::BeginPlay()
 
 	if (IsValid(TargetHandlerImplementation))
 	{
-		TargetHandlerImplementation->Initialize(this);
+		TargetHandlerImplementation->InitializeModule(this);
 	}
 
 	for (ULockOnTargetModuleBase* const Module : Modules)
 	{
 		if (IsValid(Module))
 		{
-			Module->Initialize(this);
+			Module->InitializeModule(this);
 		}
 	}
 }
@@ -57,7 +60,7 @@ void ULockOnTargetComponent::EndPlay(EEndPlayReason::Type EndPlayReason)
 
 	if (IsValid(TargetHandlerImplementation))
 	{
-		TargetHandlerImplementation->Deinitialize(this);
+		TargetHandlerImplementation->DeinitializeModule(this);
 	}
 
 	if (GetWorld())
@@ -195,9 +198,9 @@ void ULockOnTargetComponent::ProcessTargetHandlerResult(const FTargetInfo& Targe
 	checkf(TargetInfo.GetActor() != GetOwner(), TEXT("Capturing yourself is not allowed."));
 
 	//Validate the Target.
-	bool bCanTargetBeCaptured = IsValid(TargetInfo.HelperComponent) && TargetInfo.HelperComponent->CanBeCaptured(this);
+	const bool bCanTargetBeCaptured = IsValid(TargetInfo.HelperComponent) && TargetInfo.HelperComponent->CanBeCaptured(this);
 	//If Target is locked and we've got the same TargetInfo then don't process it.
-	bool bIsTargetNotSame = !IsTargetLocked() || TargetInfo != CurrentTargetInternal;
+	const bool bIsTargetNotSame = !IsTargetLocked() || TargetInfo != CurrentTargetInternal;
 
 	if (bCanTargetBeCaptured && bIsTargetNotSame)
 	{
@@ -483,7 +486,7 @@ ULockOnTargetModuleBase* ULockOnTargetComponent::FindModuleByClass(TSubclassOf<U
 {
 	auto Module = Modules.FindByPredicate([ModuleClass](const ULockOnTargetModuleBase* const Module)
 		{
-			return IsValid(Module) ? Module->IsA(ModuleClass) : false;
+			return IsValid(Module) && Module->IsA(ModuleClass);
 		});
 
 	return Module ? *Module : nullptr;
@@ -495,7 +498,7 @@ ULockOnTargetModuleBase* ULockOnTargetComponent::AddModuleByClass(TSubclassOf<UL
 
 	if (NewModule)
 	{
-		NewModule->Initialize(this);
+		NewModule->InitializeModule(this);
 		Modules.Add(NewModule);
 	}
 	else
@@ -516,7 +519,7 @@ bool ULockOnTargetComponent::RemoveModuleByClass(TSubclassOf<ULockOnTargetModule
 
 			if (IsValid(Module) && Module->IsA(ModuleClass))
 			{
-				Module->Deinitialize(this);
+				Module->DeinitializeModule(this);
 				Modules.RemoveAtSwap(i);
 				return true;
 			}
@@ -532,7 +535,7 @@ void ULockOnTargetComponent::RemoveAllModules()
 	{
 		if (IsValid(Module))
 		{
-			Module->Deinitialize(this);
+			Module->DeinitializeModule(this);
 		}
 	}
 
@@ -556,19 +559,15 @@ void ULockOnTargetComponent::SetCanCaptureTarget(bool bInCanCaptureTarget)
 
 void ULockOnTargetComponent::SetTargetHandler(UTargetHandlerBase* NewTargetHandler)
 {
-	if (IsValid(NewTargetHandler))
+	if (IsValid(NewTargetHandler) && NewTargetHandler != TargetHandlerImplementation)
 	{
-		if (NewTargetHandler != TargetHandlerImplementation)
+		if (IsValid(TargetHandlerImplementation))
 		{
-			checkf(TargetHandlerImplementation, TEXT("Failed to deinitialize mandatory TargetHandler module."));
-			TargetHandlerImplementation->Deinitialize(this);
-			TargetHandlerImplementation = NewTargetHandler;
-			TargetHandlerImplementation->Initialize(this);
+			TargetHandlerImplementation->DeinitializeModule(this);
 		}
-	}
-	else
-	{
-		LOG_WARNING("Passed NewTargetHandler is invalid.");
+
+		TargetHandlerImplementation = NewTargetHandler;
+		TargetHandlerImplementation->InitializeModule(this);
 	}
 }
 

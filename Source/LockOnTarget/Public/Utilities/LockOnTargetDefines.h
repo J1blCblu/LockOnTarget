@@ -11,7 +11,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogLockOnTarget, All, All);
 #if LOT_INSIGHTS
 	#define LOT_EVENT(Name, Color) SCOPED_NAMED_EVENT(LOT_##Name, FColor::Color)
 	#define DTH_EVENT(Name, Color) SCOPED_NAMED_EVENT(LOT_DTH_##Name, FColor::Color)
-	#define LOT_BOOKMARK(Name, ...) TRACE_BOOKMARK(TEXT("LOT_" Name), __VA_ARGS__);
+	#define LOT_BOOKMARK(Name, ...) TRACE_BOOKMARK(TEXT("LOT_" Name), __VA_ARGS__)
 #else
 	#define LOT_EVENT(Name, Color)
 	#define DTH_EVENT(Name, Color)

@@ -226,6 +226,10 @@ public: /** Config */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Line Of Sight", meta = (EditCondition = "bLineOfSightCheck", EditConditionHides, Units="s"))
 	float LostTargetDelay;
 
+	/** The captured Target will be traced within this interval. If <= 0.f, then will be traced each frame. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Line Of Sight", meta = (EditCondition = "bLineOfSightCheck && LostTargetDelay > 0", EditConditionHides, Units="s"))
+	float CheckInterval;
+
 	/** Multiply the CaptureRadius in the HelperComponent. May be useful for the progression. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Misc", meta = (UIMin = 0.f, ClampMin = 0.f, Units = "x"))
 	float TargetCaptureRadiusModifier;
@@ -282,10 +286,12 @@ protected: /** Line of Sight handling */
 	virtual void StartLineOfSightTimer();
 	virtual void StopLineOfSightTimer();
 	virtual void OnLineOfSightExpiration();
+	bool ShouldTargetBeTraced();
 	bool LineOfSightTrace(const AActor* const Target, const FVector& Location) const;
 	
 private:
 	FTimerHandle LOSDelayHandler;
+	float CheckTimer;
 
 #if WITH_EDITOR
 private:
