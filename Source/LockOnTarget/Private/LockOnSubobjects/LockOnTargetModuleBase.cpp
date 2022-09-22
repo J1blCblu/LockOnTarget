@@ -38,13 +38,14 @@ ULockOnTargetComponent* ULockOnTargetModuleBase::GetLockOnTargetComponentFromOut
 	return StaticCast<ULockOnTargetComponent*>(GetOuter());
 }
 
-void ULockOnTargetModuleBase::Initialize(ULockOnTargetComponent* Instigator)
+void ULockOnTargetModuleBase::InitializeModule(ULockOnTargetComponent* Instigator)
 {
 	check(!bIsInitialized);
 	check(Instigator);
 
 	LockOnTargetComponent = Instigator;
 	BindToLockOn();
+	Initialize(Instigator);
 	K2_Initialize();
 	bIsInitialized = true;
 
@@ -55,17 +56,23 @@ void ULockOnTargetModuleBase::Initialize(ULockOnTargetComponent* Instigator)
 	}
 }
 
-void ULockOnTargetModuleBase::BindToLockOn()
+void ULockOnTargetModuleBase::Initialize(ULockOnTargetComponent* Instigator)
 {
-	LockOnTargetComponent->OnTargetLocked.AddDynamic(this, &ThisClass::OnTargetLocked);
-	LockOnTargetComponent->OnTargetUnlocked.AddDynamic(this, &ThisClass::OnTargetUnlocked);
-	LockOnTargetComponent->OnSocketChanged.AddDynamic(this, &ThisClass::OnSocketChanged);
-	LockOnTargetComponent->OnTargetNotFound.AddDynamic(this, &ThisClass::OnTargetNotFound);
+	//Unimplemented.
 }
 
-void ULockOnTargetModuleBase::Deinitialize(ULockOnTargetComponent* Instigator)
+void ULockOnTargetModuleBase::BindToLockOn()
+{
+	LockOnTargetComponent->OnTargetLocked.AddDynamic(this, &ThisClass::OnTargetLockedPrivate);
+	LockOnTargetComponent->OnTargetUnlocked.AddDynamic(this, &ThisClass::OnTargetUnlockedPrivate);
+	LockOnTargetComponent->OnSocketChanged.AddDynamic(this, &ThisClass::OnSocketChangedPrivate);
+	LockOnTargetComponent->OnTargetNotFound.AddDynamic(this, &ThisClass::OnTargetNotFoundPrivate);
+}
+
+void ULockOnTargetModuleBase::DeinitializeModule(ULockOnTargetComponent* Instigator)
 {
 	check(bIsInitialized);
+	//Module must be deinitialized by the same Instigator.
 	check(Instigator && Instigator == LockOnTargetComponent.Get());
 
 	//If we have been destroyed while the Target is locked then call the OnTargetUnlocked callback.
@@ -75,38 +82,68 @@ void ULockOnTargetModuleBase::Deinitialize(ULockOnTargetComponent* Instigator)
 	}
 
 	UnbindFromLockOn();
+	Deinitialize(Instigator);
 	K2_Deinitialize();
 	LockOnTargetComponent = nullptr;
 	bIsInitialized = false;
 	MarkAsGarbage();
 }
 
+void ULockOnTargetModuleBase::Deinitialize(ULockOnTargetComponent* Instigator)
+{
+	//Unimplemented.
+}
+
 void ULockOnTargetModuleBase::UnbindFromLockOn()
 {
-	LockOnTargetComponent->OnTargetLocked.RemoveDynamic(this, &ThisClass::OnTargetLocked);
-	LockOnTargetComponent->OnTargetUnlocked.RemoveDynamic(this, &ThisClass::OnTargetUnlocked);
-	LockOnTargetComponent->OnSocketChanged.RemoveDynamic(this, &ThisClass::OnSocketChanged);
-	LockOnTargetComponent->OnTargetNotFound.RemoveDynamic(this, &ThisClass::OnTargetNotFound);
+	LockOnTargetComponent->OnTargetLocked.RemoveDynamic(this, &ThisClass::OnTargetLockedPrivate);
+	LockOnTargetComponent->OnTargetUnlocked.RemoveDynamic(this, &ThisClass::OnTargetUnlockedPrivate);
+	LockOnTargetComponent->OnSocketChanged.RemoveDynamic(this, &ThisClass::OnSocketChangedPrivate);
+	LockOnTargetComponent->OnTargetNotFound.RemoveDynamic(this, &ThisClass::OnTargetNotFoundPrivate);
+}
+
+void ULockOnTargetModuleBase::OnTargetLockedPrivate(UTargetingHelperComponent* Target, FName Socket)
+{
+	OnTargetLocked(Target, Socket);
+	K2_OnTargetLocked(Target, Socket);
 }
 
 void ULockOnTargetModuleBase::OnTargetLocked(UTargetingHelperComponent* Target, FName Socket)
 {
-	K2_OnTargetLocked(Target, Socket);
+	//Unimplemented.
+}
+
+void ULockOnTargetModuleBase::OnTargetUnlockedPrivate(UTargetingHelperComponent* UnlockedTarget, FName Socket)
+{
+	OnTargetUnlocked(UnlockedTarget, Socket);
+	K2_OnTargetUnlocked(UnlockedTarget, Socket);
 }
 
 void ULockOnTargetModuleBase::OnTargetUnlocked(UTargetingHelperComponent* UnlockedTarget, FName Socket)
 {
-	K2_OnTargetUnlocked(UnlockedTarget, Socket);
+	//Unimplemented.
+}
+
+void ULockOnTargetModuleBase::OnSocketChangedPrivate(UTargetingHelperComponent* CurrentTarget, FName NewSocket, FName OldSocket)
+{
+	OnSocketChanged(CurrentTarget, NewSocket, OldSocket);
+	K2_OnSocketChanged(CurrentTarget, NewSocket, OldSocket);
 }
 
 void ULockOnTargetModuleBase::OnSocketChanged(UTargetingHelperComponent* CurrentTarget, FName NewSocket, FName OldSocket)
 {
-	K2_OnSocketChanged(CurrentTarget, NewSocket, OldSocket);
+	//Unimplemented.
+}
+
+void ULockOnTargetModuleBase::OnTargetNotFoundPrivate()
+{
+	OnTargetNotFound();
+	K2_OnTargetNotFound();
 }
 
 void ULockOnTargetModuleBase::OnTargetNotFound()
 {
-	K2_OnTargetNotFound();
+	//Unimplemented.
 }
 
 void ULockOnTargetModuleBase::Update(FVector2D PlayerInput, float DeltaTime)
@@ -122,7 +159,7 @@ void ULockOnTargetModuleBase::Update(FVector2D PlayerInput, float DeltaTime)
 
 void ULockOnTargetModuleBase::UpdateOverridable(FVector2D PlayerInput, float DeltaTime)
 {
-	//Unimplemented;
+	//Unimplemented.
 }
 
 #if WITH_EDITOR

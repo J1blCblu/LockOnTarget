@@ -4,9 +4,11 @@
 #include "LockOnTargetComponent.h"
 #include "TargetingHelperComponent.h"
 #include "LockOnTargetDefines.h"
+
 #include "Components/WidgetComponent.h"
 #include "Engine/AssetManager.h"
 #include "UObject/SoftObjectPath.h"
+#include "GameFramework/PlayerController.h"
 
 UWidgetModule::UWidgetModule()
 	: DefaultWidgetClass(FSoftClassPath(FString(TEXT("WidgetBlueprint'/LockOnTarget/WBP_Target.WBP_Target_C'"))))
@@ -29,6 +31,13 @@ void UWidgetModule::Initialize(ULockOnTargetComponent* Instigator)
 		Widget->SetWidgetSpace(EWidgetSpace::Screen);
 		Widget->SetVisibility(false);
 		Widget->SetDrawAtDesiredSize(true);
+		Widget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+		if(const APlayerController* const PC = GetLockOnTargetComponent()->GetPlayerController())
+		{
+			Widget->SetOwnerPlayer(PC->GetLocalPlayer());
+		}
+
 		bWidgetIsInitialized = true;
 	}
 }

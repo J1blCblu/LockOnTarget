@@ -100,7 +100,9 @@ UDefaultTargetHandler::UDefaultTargetHandler()
 	, AngleRange(60.f)
 	, bLineOfSightCheck(true)
 	, LostTargetDelay(3.f)
+	, CheckInterval(0.1f)
 	, TargetCaptureRadiusModifier(1.f)
+	, CheckTimer(0.f)
 {
 	TraceObjectChannels.Emplace(ECollisionChannel::ECC_WorldStatic);
 	bWantsUpdate = false;
@@ -115,6 +117,7 @@ void UDefaultTargetHandler::OnTargetUnlocked(UTargetingHelperComponent* Unlocked
 {
 	Super::OnTargetUnlocked(UnlockedTarget, Socket);
 	StopLineOfSightTimer();
+	CheckTimer = 0.f;
 }
 
 FTargetInfo UDefaultTargetHandler::FindTarget_Implementation(FVector2D PlayerInput)
@@ -161,7 +164,7 @@ bool UDefaultTargetHandler::CanContinueTargeting_Implementation()
 	}
 
 	//Line of Sight check.
-	if (bLineOfSightCheck && LostTargetDelay > 0.f) //don't trace if timer <= 0.f.
+	if (ShouldTargetBeTraced())
 	{
 		LineOfSightTrace(CurrentTarget, LockOn->GetCapturedSocketLocation()) ? StopLineOfSightTimer() : StartLineOfSightTimer();
 	}
@@ -434,6 +437,25 @@ void UDefaultTargetHandler::StopLineOfSightTimer()
 void UDefaultTargetHandler::OnLineOfSightExpiration()
 {
 	HandleTargetClearing(EUnlockReasonBitmask::LineOfSightFail);
+}
+
+bool UDefaultTargetHandler::ShouldTargetBeTraced()
+{
+	//don't trace if delay <= 0.f.
+	bool bShouldTrace = bLineOfSightCheck && LostTargetDelay > 0.f;
+
+	if(const UWorld* const World = GetWorld())
+	{
+		CheckTimer += World->GetDeltaSeconds();
+		bShouldTrace &= CheckTimer > CheckInterval;
+
+		if(bShouldTrace)
+		{
+			CheckTimer = 0.f;
+		}
+	}
+
+	return bShouldTrace;
 }
 
 bool UDefaultTargetHandler::LineOfSightTrace(const AActor* const Target, const FVector& Location) const

@@ -42,30 +42,17 @@ public:
 
 protected: //Module Interface
 
-	/** It's guarantied that component is valid. But in some cases in editor this is not true. */
+	/** It's guarantied that the component is valid. But in some cases in the editor this is not true. */
 	UFUNCTION(BlueprintPure, Category = "LockOnTargetModule", meta = (BlueprintProtected))
 	ULockOnTargetComponent* GetLockOnTargetComponent() const;
 
-	ULockOnTargetComponent* GetLockOnTargetComponentFromOuter() const;
-
+	//All descriptions can be found in the "BP callbacks" section below.
 	virtual void Initialize(ULockOnTargetComponent* Instigator);
-	
 	virtual void Deinitialize(ULockOnTargetComponent* Instigator);
-	
-	void Update(FVector2D PlayerInput, float DeltaTime);
-	
 	virtual void UpdateOverridable(FVector2D PlayerInput, float DeltaTime);
-
-	UFUNCTION()
 	virtual void OnTargetLocked(UTargetingHelperComponent* Target, FName Socket);
-
-	UFUNCTION()
 	virtual void OnTargetUnlocked(UTargetingHelperComponent* UnlockedTarget, FName Socket);
-
-	UFUNCTION()
 	virtual void OnSocketChanged(UTargetingHelperComponent* CurrentTarget, FName NewSocket, FName OldSocket);
-
-	UFUNCTION()
 	virtual void OnTargetNotFound();
 
 protected: //UObject overrides
@@ -79,8 +66,26 @@ public:
 	virtual UWorld* GetWorld() const override;
 
 private:
+	ULockOnTargetComponent* GetLockOnTargetComponentFromOuter() const;
 	void BindToLockOn();
 	void UnbindFromLockOn();
+
+private: //Should only be used by the LockOnTargetComponent.
+	void InitializeModule(ULockOnTargetComponent* Instigator);
+	void DeinitializeModule(ULockOnTargetComponent* Instigator);
+	void Update(FVector2D PlayerInput, float DeltaTime);
+
+	UFUNCTION()
+	virtual void OnTargetLockedPrivate(UTargetingHelperComponent* Target, FName Socket);
+
+	UFUNCTION()
+	virtual void OnTargetUnlockedPrivate(UTargetingHelperComponent* UnlockedTarget, FName Socket);
+
+	UFUNCTION()
+	virtual void OnSocketChangedPrivate(UTargetingHelperComponent* CurrentTarget, FName NewSocket, FName OldSocket);
+
+	UFUNCTION()
+	virtual void OnTargetNotFoundPrivate();
 
 protected: //BP callbacks
 
