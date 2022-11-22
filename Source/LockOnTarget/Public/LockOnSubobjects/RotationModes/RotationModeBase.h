@@ -43,7 +43,7 @@ public:
 
 public:
 	/** Clamps the returned rotation's pitch. Where x - min value, y - max value. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Base Config", meta = (EditCondition = "RotationAxes & ERot::Pitch", EditConditionHides, DisplayAfter=RotationAxes))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Base Config", meta = (/**EditCondition = "RotationAxes & ERot::Pitch", EditConditionHides,*/ DisplayAfter=RotationAxes))
 	FVector2D PitchClamp;
 
 	/** Offset applied to the returned rotation. */
@@ -84,6 +84,7 @@ protected:
 
 protected:
 #if WITH_EDITOR
+	virtual bool CanEditChange(const FProperty* InProperty) const override;
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& Event) override;
 #endif
 };

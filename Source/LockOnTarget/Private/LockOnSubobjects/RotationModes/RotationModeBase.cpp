@@ -44,6 +44,20 @@ void URotationModeBase::ApplyRotationAxes(const FRotator& CurrentRotation, FRota
 
 #if WITH_EDITOR
 
+bool URotationModeBase::CanEditChange(const FProperty* InProperty) const
+{
+	//EditCondition is broken since 5.1.0 with bit flags. Check it in future versions.
+
+	bool bSuper = Super::CanEditChange(InProperty);
+
+	if (InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(ThisClass, PitchClamp))
+	{
+		bSuper &= (RotationAxes & static_cast<std::underlying_type_t<ERot>>(ERot::Pitch)) != 0;
+	}
+
+	return bSuper;
+}
+
 void URotationModeBase::PostEditChangeProperty(FPropertyChangedEvent& Event)
 {
 	Super::PostEditChangeProperty(Event);
