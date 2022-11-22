@@ -4,6 +4,7 @@
 #include "LockOnTargetComponent.h"
 #include "LockOnTargetDefines.h"
 #include "TemplateUtilities.h"
+
 #include "Components/MeshComponent.h"
 #include "Engine/SimpleConstructionScript.h"
 
@@ -40,16 +41,11 @@ void UTargetingHelperComponent::BeginPlay()
 
 void UTargetingHelperComponent::EndPlay(EEndPlayReason::Type Reason)
 {
+	//In an event-driven design, we have to disable bCanBeCaptured to avoid being captured again.
+	//Previously, we handled this on the next tick in LockOnTargetComponent.
+	bCanBeCaptured = false;
+	OnTargetEndPlay.Broadcast(this, Reason);
 	Super::EndPlay(Reason);
-
-	//Notify listeners.
-	for (ULockOnTargetComponent* Invader : Invaders)
-	{
-		OnOwnerReleased.Broadcast(Invader);
-		K2_OnReleased(Invader);
-	}
-
-	Invaders.Empty();
 }
 
 bool UTargetingHelperComponent::CanBeCaptured(const ULockOnTargetComponent* Instigator) const
@@ -71,6 +67,7 @@ void UTargetingHelperComponent::CaptureTarget(ULockOnTargetComponent* Instigator
 
 		if (!bHasAlreadyBeen)
 		{
+			//Most likely you removed the socket on one machine, and captured on another.
 			checkf(Sockets.Contains(Socket), TEXT("Captured socket doesn't exists in the Target."));
 			OnOwnerCaptured.Broadcast(Instigator, Socket);
 			K2_OnCaptured(Instigator, Socket);
@@ -186,7 +183,14 @@ bool UTargetingHelperComponent::AddSocket(FName Socket)
 
 bool UTargetingHelperComponent::RemoveSocket(FName Socket)
 {
-	return Sockets.Remove(Socket) > 0;
+	bool bResult = Sockets.Remove(Socket) > 0;
+
+	if(bResult)
+	{
+		OnSocketRemoved.Broadcast(Socket);
+	}
+
+	return bResult;
 }
 
 void UTargetingHelperComponent::UpdateDesiredMesh(UMeshComponent* NewComponent)

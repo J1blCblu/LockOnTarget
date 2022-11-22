@@ -12,6 +12,8 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 
+const FTargetInfo ULockOnTargetComponent::NULL_TARGET = { nullptr, NAME_None };
+
 ULockOnTargetComponent::ULockOnTargetComponent()
 	: bCanCaptureTarget(true)
 	, InputBufferThreshold(.15f)
@@ -130,6 +132,15 @@ void ULockOnTargetComponent::ProcessAnalogInput(float DeltaTime)
 
 	//@TODO: If the Target is unlocked while the Input is frozen, then it'll be frozen until the new Target is captured.
 
+	//Process the input only for the locally controlled Owner.
+	if(const AController* const Controller = GetController())
+	{
+		if(!Controller->IsLocalPlayerController())
+		{
+			return;
+		}
+	}
+
 	//If you want to have an ability to unfreeze input while delay is active then change the order in the if statement below.
 	if (!bCanCaptureTarget || !GetWorld() || IsInputDelayActive() || !CanInputBeProcessed(InputVector.Size()))
 	{
@@ -216,13 +227,6 @@ void ULockOnTargetComponent::ProcessTargetHandlerResult(const FTargetInfo& Targe
 
 bool ULockOnTargetComponent::CanContinueTargeting()
 {
-	//Corner case. Shouldn't actually be happened.
-	if (!GetOwner())
-	{
-		ClearTargetManual();
-		return false;
-	}
-
 	/**
 	 * A few words about Target's network synchronization in the LockOnTargetComponent:
 	 *
@@ -239,7 +243,7 @@ bool ULockOnTargetComponent::CanContinueTargeting()
 	 * Instead mark them as 'can't be captured' in the TargetingHelperComponent on the owning client and then destroy after a while.
 	 **/
 
-	 //@TODO: Actors without Controller should also use the TargetHadler.
+	//@TODO: Actors without Controller should also use the TargetHadler.
 	if (IsLocallyControlled())
 	{
 		//Only the locally controlled component refers to the TargetHandler.
@@ -249,7 +253,7 @@ bool ULockOnTargetComponent::CanContinueTargeting()
 			if (TargetHandlerImplementation->CanContinueTargeting())
 			{
 				//Just verifying that TargetHandler 'handled' everything correctly or skipped these checks, cause otherwise the Target will be out of sync.
-				if (!IsValid(GetTarget()) || !GetHelperComponent()->CanBeCaptured(this))
+				if (!GetHelperComponent()->CanBeCaptured(this))
 				{
 					ClearTargetManual();
 					return false;
@@ -269,21 +273,11 @@ bool ULockOnTargetComponent::CanContinueTargeting()
 		else
 		{
 			//If TargetHandlerImplementation is invalid then provide checks manually.
-			if (!IsValid(GetTarget()) || !GetHelperComponent()->CanBeCaptured(this))
+			if (!GetHelperComponent()->CanBeCaptured(this))
 			{
 				ClearTargetManual();
 				return false;
 			}
-		}
-
-	}
-	else
-	{
-		//Non-locally controlled Server and SimulatedProxies just clear the Target locally.
-		if (!IsValid(GetTarget()))
-		{
-			ClearTargetManual();
-			return false;
 		}
 	}
 
@@ -298,7 +292,7 @@ void ULockOnTargetComponent::SetLockOnTargetManual(AActor* NewTarget, FName Sock
 {
 	checkf(NewTarget != GetOwner(), TEXT("Capturing yourself is not allowed."));
 
-	if (bCanCaptureTarget && IsValid(NewTarget))
+	if (bCanCaptureTarget && IsLocallyControlled() && IsValid(NewTarget))
 	{
 		const FTargetInfo NewTargetInfo{ NewTarget->FindComponentByClass<UTargetingHelperComponent>(), Socket };
 
@@ -319,15 +313,15 @@ void ULockOnTargetComponent::SwitchTargetManual(FVector2D PlayerInput)
 
 void ULockOnTargetComponent::ClearTargetManual(bool bAutoFindNewTarget)
 {
-	//Nice to have: Don't send the RPC if the CurrentTargetInternal is invalid, cause it'll automatically be cleared on the server.
-	//But this will only work in case of replicated actors. You can read more in CanContinueTargeting() implementation.
 	if (IsTargetLocked())
 	{
+		check(GetTarget());
+
 		//Implementation uses 1 reliable server call.
-		if (bAutoFindNewTarget)
+		if (bAutoFindNewTarget && IsLocallyControlled())
 		{
 			//Clear the current Target locally.
-			Server_UpdateTargetInfo_Implementation({ nullptr, NAME_None });
+			Server_UpdateTargetInfo_Implementation(NULL_TARGET);
 
 			//Find a new Target and if found automatically update on the server.
 			//Note that the released Target can be captured again.
@@ -336,12 +330,12 @@ void ULockOnTargetComponent::ClearTargetManual(bool bAutoFindNewTarget)
 			//If a new Target isn't found then clear the Target on the server.
 			if (!IsTargetLocked() && GetOwnerRole() == ROLE_AutonomousProxy)
 			{
-				Server_UpdateTargetInfo({ nullptr, NAME_None });
+				Server_UpdateTargetInfo(NULL_TARGET);
 			}
 		}
 		else
 		{
-			UpdateTargetInfo({ nullptr, NAME_None });
+			UpdateTargetInfo(NULL_TARGET);
 		}
 	}
 }
@@ -355,7 +349,7 @@ void ULockOnTargetComponent::UpdateTargetInfo(const FTargetInfo& TargetInfo)
 	//Update the Target locally.
 	Server_UpdateTargetInfo_Implementation(TargetInfo);
 
-	//Update the Target on the server.
+	//Update the Target on the server. Server and simulated proxy don't need to call RPC.
 	if (GetOwnerRole() == ROLE_AutonomousProxy)
 	{
 		Server_UpdateTargetInfo(TargetInfo);
@@ -374,18 +368,21 @@ void ULockOnTargetComponent::OnTargetInfoUpdated(const FTargetInfo& OldTarget)
 {
 	if (IsValid(CurrentTargetInternal.HelperComponent))
 	{
+		//Same Target with a new socket.
 		if (OldTarget.HelperComponent == CurrentTargetInternal.HelperComponent)
 		{
 			UpdateTargetSocket(OldTarget.SocketForCapturing);
 		}
 		else
 		{
+			//Another or new Target.
 			ReleaseTarget(OldTarget);
 			CaptureTarget(CurrentTargetInternal);
 		}
 	}
 	else
 	{
+		//Null Target.
 		ReleaseTarget(OldTarget);
 	}
 }
@@ -394,10 +391,18 @@ void ULockOnTargetComponent::CaptureTarget(const FTargetInfo& Target)
 {
 	LOT_BOOKMARK("Target captured %s", *GetNameSafe(Target.GetActor()));
 
+	check(Target.HelperComponent);
+
 	bIsTargetLocked = true;
 
 	//Notify TargetingHelperComponent.
 	Target.HelperComponent->CaptureTarget(this, Target.SocketForCapturing);
+	Target.HelperComponent->OnTargetEndPlay.AddUObject(this, &ThisClass::OnTargetEndPlay);
+
+	if (IsLocallyControlled())
+	{
+		Target.HelperComponent->OnSocketRemoved.AddUObject(this, &ThisClass::OnTargetSocketRemoved);
+	}
 
 	//Notify all listeners including the TargetHandler.
 	OnTargetLocked.Broadcast(Target.HelperComponent, Target.SocketForCapturing);
@@ -409,12 +414,16 @@ void ULockOnTargetComponent::ReleaseTarget(const FTargetInfo& Target)
 	{
 		LOT_BOOKMARK("Target released %s", *GetNameSafe(Target.GetActor()));
 
+		check(Target.HelperComponent);
+
 		bIsTargetLocked = false;
 
-		//Notify TargetingHelperComponent.
-		if (IsValid(Target.HelperComponent))
+		Target.HelperComponent->ReleaseTarget(this);
+		Target.HelperComponent->OnTargetEndPlay.RemoveAll(this);
+
+		if (IsLocallyControlled())
 		{
-			Target.HelperComponent->ReleaseTarget(this);
+			Target.HelperComponent->OnSocketRemoved.RemoveAll(this);
 		}
 
 		//Notify all listeners including the TargetHandler.
@@ -433,6 +442,78 @@ void ULockOnTargetComponent::UpdateTargetSocket(FName OldSocket)
 	OnSocketChanged.Broadcast(GetHelperComponent(), GetCapturedSocket(), OldSocket);
 }
 
+void ULockOnTargetComponent::OnTargetEndPlay(UTargetingHelperComponent* HelperComponent, EEndPlayReason::Type Reason)
+{
+	//@TODO: Rework this. Call the handler at the end when the Target is already cleared?
+	//Cause now, if a replicated Target is destroyed then the DefaultTargetHalder will call to ClearTargetManual() implementation,
+	//which currently don't care about the Target replication. So, if it doesn't find a Target then will send the RPC.
+
+	check(IsTargetLocked());
+	check(GetHelperComponent() == HelperComponent);
+
+	//Non-replicated Target destruction have to only be handled by a locally controlled player.
+	checkfSlow(GetNetMode() == NM_Standalone 
+		|| Reason != EEndPlayReason::Destroyed 
+		|| GetTarget()->GetIsReplicated() 
+		|| IsLocallyControlled(), TEXT("Target out of sync!"));
+
+	//TargetHandler can handle this locally.
+	if (IsLocallyControlled() && IsValid(TargetHandlerImplementation) && Reason == EEndPlayReason::Destroyed)
+	{
+		TargetHandlerImplementation->HandleTargetEndPlay(HelperComponent);
+	}
+
+	//Regardless of whether the TargetHandler has 'handled' this, we need to verify the result.
+	//And we need to avoid crashes on the server and simulated proxies.
+	if (IsTargetLocked() && HelperComponent == GetHelperComponent())
+	{
+		if(GetTarget()->GetIsReplicated())
+		{
+			if (GetOwnerRole() == ROLE_SimulatedProxy)
+			{
+				//Very Important! Struct replicates only changed properties.
+				//We don't clear the Target. Cause if we do that, we have a chance to not receive an update from the server.
+				//e.g. if we clear the socket from Head to None, and the autonomous player will capture a new Target with the Head socket, then we won't
+				//get an update for the socket, only for the HelperComponent. Thus, we will have the None socket on simulated proxy.
+				//This is very a subtle error, I spent around 8 hours to solve it.
+				ReleaseTarget(CurrentTargetInternal);
+			}
+			else
+			{
+				//The server and Autonomous proxy can clear the Target safely.
+				Server_UpdateTargetInfo_Implementation(NULL_TARGET);
+			}
+		}
+		else
+		{
+			//...
+			ClearTargetManual();
+		}
+	}
+}
+
+void ULockOnTargetComponent::OnTargetSocketRemoved(FName RemovedSocket)
+{
+	check(IsTargetLocked());
+
+	//Socket removal should be handled locally.
+	check(IsLocallyControlled());
+
+	if (GetCapturedSocket() == RemovedSocket)
+	{
+		if(IsValid(TargetHandlerImplementation))
+		{
+			TargetHandlerImplementation->HandleSocketRemoval(RemovedSocket);
+		}
+
+		//Just verifying after TargetHandler.
+		if (IsTargetLocked() && GetCapturedSocket() == RemovedSocket)
+		{
+			ClearTargetManual();
+		}
+	}
+}
+
 /*******************************************************************************************/
 /***************************************  Tick  ********************************************/
 /*******************************************************************************************/
@@ -445,13 +526,10 @@ void ULockOnTargetComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	if (IsTargetLocked() && CanContinueTargeting())
 	{
-		TargetingDuration += DeltaTime;
+		check(GetTarget());
 
-		if (IsLocallyControlled())
-		{
-			//Process the input only for the locally controlled Owner.
-			ProcessAnalogInput(DeltaTime);
-		}
+		TargetingDuration += DeltaTime;
+		ProcessAnalogInput(DeltaTime);
 	}
 
 	if (IsValid(TargetHandlerImplementation))
@@ -577,9 +655,21 @@ UTargetHandlerBase* ULockOnTargetComponent::SetTargetHandlerByClass(TSubclassOf<
 	return TargetHandlerImplementation;
 }
 
+UTargetingHelperComponent* ULockOnTargetComponent::GetHelperComponent() const
+{
+	//Read the comments in the OnTargetEndPlay() method.
+	return IsTargetLocked() ? CurrentTargetInternal.HelperComponent : nullptr;
+}
+
 AActor* ULockOnTargetComponent::GetTarget() const
 {
 	return GetHelperComponent() ? GetHelperComponent()->GetOwner() : nullptr;
+}
+
+FName ULockOnTargetComponent::GetCapturedSocket() const
+{
+	//Read the comments in the OnTargetEndPlay() method.
+	return IsTargetLocked() ? CurrentTargetInternal.SocketForCapturing : NAME_None;
 }
 
 FVector ULockOnTargetComponent::GetCapturedSocketLocation() const

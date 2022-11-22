@@ -45,18 +45,19 @@ class LOCKONTARGET_API ULockOnTargetComponent : public UActorComponent
 public:
 	ULockOnTargetComponent();
 	friend class FGDC_LockOnTarget; //Gameplay Debugger
+	static const FTargetInfo NULL_TARGET;
 	
 private:
 	/** Can this Component capture a Target. Not replicated. Have affect only for the local owning client. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Default Settings", meta = (AllowPrivateAccess))
-	uint8 bCanCaptureTarget : 1;
+	bool bCanCaptureTarget;
 
 	/** Special module that handles the Target. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Default Settings", meta = (AllowPrivateAccess, NoResetToDefault))
+	UPROPERTY(Instanced, EditDefaultsOnly, BlueprintReadOnly, Category = "Default Settings", meta = (AllowPrivateAccess, NoResetToDefault))
 	TObjectPtr<UTargetHandlerBase> TargetHandlerImplementation;
 	
 	/** Set of default Modules. Will be instantiated on all machines (may be changed in the future). Update order is not defined. */
-	UPROPERTY(EditDefaultsOnly, Category = "Modules", meta = (DisplayName = "Default Modules", NoResetToDefault))
+	UPROPERTY(Instanced, EditDefaultsOnly, Category = "Modules", meta = (DisplayName = "Default Modules", NoResetToDefault))
 	TArray<TObjectPtr<ULockOnTargetModuleBase>> Modules;
 
 public:
@@ -78,12 +79,13 @@ public:
 
 	/** Freeze InputBuffer filling until the input reaches the UnfreezeThreshold after a successful switch. */
 	UPROPERTY(EditDefaultsOnly, Category = "Player Input")
-	uint8 bFreezeInputAfterSwitch : 1;
+	bool bFreezeInputAfterSwitch;
 
 	/** Unfreeze InputBuffer filling if the input is less than the threshold. */
 	UPROPERTY(EditDefaultsOnly, Category = "Player Input", meta = (ClampMin = 0.f, UIMin = 0.f, EditCondition = "bFreezeInputAfterSwitch", EditConditionHides))
 	float UnfreezeThreshold;
-
+	
+public:
 	/** Called when the Target is locked. */
 	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent")
 	FOnTargetLocked OnTargetLocked;
@@ -110,7 +112,7 @@ private:
 	float TargetingDuration;
 
 	//Is any HelperComponent is captured.
-	uint8 bIsTargetLocked : 1;
+	bool bIsTargetLocked;
 
 public: /** UActorComponent overrides */
 
@@ -177,6 +179,9 @@ private: /** Processing the Target */
 
 	//Called to change the Target's socket (if the Target has > 1 socket).
 	virtual void UpdateTargetSocket(FName OldSocket);
+
+	virtual void OnTargetEndPlay(UTargetingHelperComponent* HelperComponent, EEndPlayReason::Type Reason);
+	virtual void OnTargetSocketRemoved(FName RemovedSocket);
 	
 private: /** Input processing */
 
@@ -267,11 +272,11 @@ public: /** Misc */
 
 	/** Current locked Target's TargetingHelperComponent. */
 	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
-	UTargetingHelperComponent* GetHelperComponent() const { return CurrentTargetInternal.HelperComponent; }
+	UTargetingHelperComponent* GetHelperComponent() const;
 
 	/** Captured socket, if exists. NAME_None otherwise. */
 	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
-	FName GetCapturedSocket() const { return CurrentTargetInternal.SocketForCapturing; }
+	FName GetCapturedSocket() const;
 
 	/** Currently locked Actor. */
 	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")

@@ -35,10 +35,10 @@ private:
 	TSharedPtr<FStreamableHandle> StreamableHandle;
 
 	//Whether the widget is active or not.
-	uint8 bWidgetIsActive : 1;
+	bool bWidgetIsActive;
 	
 	//Whether the widget was successfully initialized or not.
-	uint8 bWidgetIsInitialized : 1;
+	bool bWidgetIsInitialized;
 
 protected: //ULockOnTargetModuleBase overrides
 	virtual void Initialize(ULockOnTargetComponent* Instigator) override;

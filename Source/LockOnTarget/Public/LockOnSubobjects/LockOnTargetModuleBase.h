@@ -8,37 +8,34 @@
 
 class ULockOnTargetComponent;
 class UTargetingHelperComponent;
+class ULockOnTargetModuleProxy;
+class ULockOnTargetModuleBase;
 
-/**
- *	LockOnTarget Module is a base dynamic unit that:
- *	 - Implements LockOnTargetComponent callbacks.
- *	 - Can add some functionality.
- *	 - Can be removed/added at runtime.
- *	Isn't replicated.
- * 
- *	@see UControlRotationModule, UCameraZoomModule, UWidgetModule.
+/** 
+ * Just a proxy class to exclude TargetHandlers from the LockOnTarget module hierarchy.
+ * Shouldn't be directly referenced! Just to save shared functionality and dependencies.
  */
-UCLASS(Blueprintable, ClassGroup = (LockOnTarget), Abstract, EditInlineNew, DefaultToInstanced, HideDropdown)
-class LOCKONTARGET_API ULockOnTargetModuleBase : public UObject
+UCLASS(Abstract, ClassGroup(LockOnTarget), HideDropdown)
+class LOCKONTARGET_API ULockOnTargetModuleProxy : public UObject
 {
 	GENERATED_BODY()
 
 public:
-	ULockOnTargetModuleBase();
+	ULockOnTargetModuleProxy();
 	friend ULockOnTargetComponent;
 
 private:
 	TWeakObjectPtr<ULockOnTargetComponent> LockOnTargetComponent;
-	uint8 bIsInitialized : 1;
+	bool bIsInitialized;
 
 public:
 	/** Wants to call the Update method. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="Module Config")
-	uint8 bWantsUpdate : 1;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Module Config")
+	bool bWantsUpdate;
 
 	/** Should this module call the Update method only while any Target is locked. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="Module Config", meta = (EditCondition = "bWantsUpdate", EditConditionHides))
-	uint8 bUpdateOnlyWhileLocked : 1;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Module Config", meta = (EditCondition = "bWantsUpdate", EditConditionHides))
+	bool bUpdateOnlyWhileLocked;
 
 protected: //Module Interface
 
@@ -92,28 +89,53 @@ protected: //BP callbacks
 	/** Called once to initialize Module. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Module Base", DisplayName = "Initialize")
 	void K2_Initialize();
-	
+
 	/** Called once to deinitialize Module. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Module Base", DisplayName = "Deinitialize")
 	void K2_Deinitialize();
-	
+
 	/** Called when the owning LockOnTargetComponent captured the Target. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "Module Base", DisplayName="On Target Locked")
+	UFUNCTION(BlueprintImplementableEvent, Category = "Module Base", DisplayName = "On Target Locked")
 	void K2_OnTargetLocked(UTargetingHelperComponent* Target, FName Socket);
-	
+
 	/** Called when the owning LockOnTargetComponent released the Target. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Module Base", DisplayName = "On Target Unlocked")
 	void K2_OnTargetUnlocked(UTargetingHelperComponent* UnlockedTarget, FName Socket);
-	
+
 	/** Called when the Socket is changed within the current Target, if it has more than 1 socket. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Module Base", DisplayName = "On Socket Changed")
 	void K2_OnSocketChanged(UTargetingHelperComponent* CurrentTarget, FName NewSocket, FName OldSocket);
-	
+
 	/** Called when the owning LockOnTargetComponent didn't find the Target. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Module Base", DisplayName = "On Target Not Found")
 	void K2_OnTargetNotFound();
-	
+
 	/** Basic tick method. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Module Base", DisplayName = "Update")
 	void K2_Update(FVector2D PlayerInput, float DeltaTime);
+};
+
+/**
+ *	LockOnTarget Module is a base dynamic unit that:
+ *	 - Implements LockOnTargetComponent callbacks.
+ *	 - Can add some functionality.
+ *	 - Can be removed/added at runtime.
+ *	Isn't replicated.
+ * 
+ * Lifecycle is managed by the LockOnTargetComponent, 
+ * so it's always safe to refer to it at runtime.
+ * 
+ *	@see UControlRotationModule, UCameraZoomModule, UWidgetModule.
+ */
+UCLASS(Blueprintable, ClassGroup = (LockOnTarget), Abstract, EditInlineNew, DefaultToInstanced, HideDropdown, CustomConstructor)
+class LOCKONTARGET_API ULockOnTargetModuleBase : public ULockOnTargetModuleProxy
+{
+	GENERATED_BODY()
+
+public:
+
+	ULockOnTargetModuleBase(){}
+
+	//Some code related only to modules, not including TargetHandler.
+
 };

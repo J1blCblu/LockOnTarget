@@ -7,23 +7,15 @@
 
 #include "Camera/CameraComponent.h"
 #include "GameFramework/Actor.h"
-
-constexpr float DefaultUninitializedFOV = 90.f;
+#include "Curves/CurveFloat.h"
 
 UCameraZoomModule::UCameraZoomModule()
-	: CameraName(NAME_None)
-	, bUseAbsoluteValue(false)
-	, Camera(nullptr)
-	, DefaultFOV(DefaultUninitializedFOV)
+	: ZoomCurve(FSoftClassPath(FString(TEXT("CurveFloat'/LockOnTarget/LOT_FOV_Curve.LOT_FOV_Curve'"))))
+	, ActiveCamera(nullptr)
+	, CachedZoomValue(0.f)
 {
 	bWantsUpdate = true;
 	bUpdateOnlyWhileLocked = false;
-
-	if(FRichCurve* const Curve = FieldOfViewCurve.GetRichCurve())
-	{
-		Curve->AddKey(0.f, 0.f);
-		Curve->AddKey(0.25f, -3.f);
-	}
 }
 
 void UCameraZoomModule::Initialize(ULockOnTargetComponent* Instigator)
@@ -32,38 +24,43 @@ void UCameraZoomModule::Initialize(ULockOnTargetComponent* Instigator)
 
 	if (AActor* const Owner = GetLockOnTargetComponent()->GetOwner())
 	{
-		Camera = CameraName == NAME_None ? Owner->FindComponentByClass<UCameraComponent>() : FindComponentByName<UCameraComponent>(Owner, CameraName);
+		TInlineComponentArray<UCameraComponent*> Cameras(Owner);
 
-		if(Camera.IsValid())
+		for (UCameraComponent* const Camera : Cameras)
 		{
-			DefaultFOV = Camera->FieldOfView;
-			//Timeline doesn't accept FRichCurve.
-			UCurveFloat* const Curve = NewObject<UCurveFloat>(this, FName(TEXT("ZoomCurve_Temp")));
-			Curve->FloatCurve = *FieldOfViewCurve.GetRichCurve();
-			Timeline.AddInterpFloat(Curve, FOnTimelineFloatStatic::CreateUObject(this, &UCameraZoomModule::UpdateTimeline));
-		}
-		else
-		{
-			if(CameraName != NAME_None)
+			if(Camera && Camera->IsActive())
 			{
-				LOG_WARNING("Failed to find the camera named %s", *CameraName.ToString());
+				ActiveCamera = Camera;
+				break;
 			}
 		}
+	}
+
+	if(ActiveCamera.IsValid())
+	{
+		checkf(!ZoomCurve.IsNull(), TEXT("Zoom curve isn't specified."));
+
+		Timeline.AddInterpFloat(ZoomCurve.LoadSynchronous(), FOnTimelineFloatStatic::CreateUObject(this, &ThisClass::UpdateTimeline));
+	}
+	else
+	{
+		LOG_WARNING("CameraComponent isn't found.");
 	}
 }
 
 void UCameraZoomModule::Deinitialize(ULockOnTargetComponent* Instigator)
 {
-	if (Camera.IsValid() && Timeline.GetPlaybackPosition() > 0.f)
-	{
-		//Update the Camera FOV manual.
-		if(const FRichCurve* const Curve = FieldOfViewCurve.GetRichCurveConst())
-		{
-			UpdateTimeline(Curve->Eval(0.f));
-		}
-	}
+	ClearZoomOnActiveCamera();
 
 	Super::Deinitialize(Instigator);
+}
+
+void UCameraZoomModule::ClearZoomOnActiveCamera()
+{
+	if (ActiveCamera.IsValid() && Timeline.GetPlaybackPosition() > 0.f)
+	{
+		ActiveCamera->FieldOfView -= CachedZoomValue;
+	}
 }
 
 void UCameraZoomModule::OnTargetLocked(UTargetingHelperComponent* Target, FName Socket)
@@ -88,7 +85,7 @@ void UCameraZoomModule::OnTargetUnlocked(UTargetingHelperComponent* UnlockedTarg
 
 void UCameraZoomModule::UpdateOverridable(FVector2D PlayerInput, float DeltaTime)
 {
-	if (Camera.IsValid())
+	if (ActiveCamera.IsValid())
 	{
 		Timeline.TickTimeline(DeltaTime);
 	}
@@ -96,5 +93,19 @@ void UCameraZoomModule::UpdateOverridable(FVector2D PlayerInput, float DeltaTime
 
 void UCameraZoomModule::UpdateTimeline(float Value)
 {
-	Camera->FieldOfView = bUseAbsoluteValue ? Value : DefaultFOV + Value;
+	if(ActiveCamera.IsValid())
+	{
+		const float CurrentFOV = ActiveCamera->FieldOfView;
+		ActiveCamera->SetFieldOfView(CurrentFOV - CachedZoomValue + Value);
+		CachedZoomValue = Value;
+	}
+}
+
+void UCameraZoomModule::SetActiveCamera(UCameraComponent* InActiveCamera)
+{
+	if(IsValid(InActiveCamera) && InActiveCamera != ActiveCamera.Get())
+	{
+		ClearZoomOnActiveCamera();
+		ActiveCamera = InActiveCamera;
+	}
 }

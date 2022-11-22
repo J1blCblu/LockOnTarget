@@ -4,11 +4,15 @@
 
 #include "LockOnSubobjects/LockOnTargetModuleBase.h"
 #include "Components/TimelineComponent.h"
-#include "Curves/CurveFloat.h"
 #include "CameraZoomModule.generated.h"
+
+class UCurveFloat;
+class UCameraComponent;
 
 /**
  * Applies zoom to the camera when any Target is locked or unlocked.
+ * ActiveCamera FOV can be safely changed while zooming.
+ * The module will clean up everything after being removed.
  */
 UCLASS(Blueprintable)
 class LOCKONTARGET_API UCameraZoomModule : public ULockOnTargetModuleBase
@@ -19,25 +23,32 @@ public:
 	UCameraZoomModule();
 
 public:
-	/** Camera FOV curve. */
-	UPROPERTY(EditDefaultsOnly, Category = "Camera Zoom", meta = (XAxisName = "Time", YAxisName = "FOV"))
-	FRuntimeFloatCurve FieldOfViewCurve;
 
-	/** Provide specific camera component by name. If None then the first camera from the component hierarchy will be used. */
-	UPROPERTY(EditDefaultsOnly, Category = "Camera Zoom")
-	FName CameraName;
-
-	/** If true an absolute FOV value from the curve will be applied to the camera. Otherwise as delta. */
-	UPROPERTY(EditDefaultsOnly, Category = "Camera Zoom")
-	uint8 bUseAbsoluteValue : 1;
+	//The FOV will be added as delta. You can safely change absolute FOV.
+	//Note: There is no way to change this at runtime.
+	UPROPERTY(EditAnywhere, Category = "Camera Zoom")
+	TSoftObjectPtr<UCurveFloat> ZoomCurve;
 
 private:
+
 	UPROPERTY(Transient)
 	FTimeline Timeline;
-	TWeakObjectPtr<class UCameraComponent> Camera;
-	float DefaultFOV;
+	
+	//Cached active camera.
+	TWeakObjectPtr<UCameraComponent> ActiveCamera;
 
+	//The actual zoom value applied to the ActiveCamera.
+	float CachedZoomValue;
+
+public:
+
+	/** Set a new ActiveCamera. Zoom will be cleared on the previous camera. */
+	UFUNCTION(BlueprintCallable, Category = "Camera Zoom")
+	void SetActiveCamera(UCameraComponent* InActiveCamera);
+
+protected:
 	virtual void UpdateTimeline(float Value);
+	void ClearZoomOnActiveCamera();
 
 protected: // ULockOnTargetModuleBase overrides
 	virtual void Initialize(ULockOnTargetComponent* Instigator) override;

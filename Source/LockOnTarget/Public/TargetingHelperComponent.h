@@ -7,14 +7,17 @@
 #include "TargetingHelperComponent.generated.h"
 
 class ULockOnTargetComponent;
-class FHelperVisualizer;
+class UTargetingHelperComponent;
 class UMeshComponent;
 class USceneComponent;
 class AActor;
 class UUserWidget;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnOwnerCaptured, class ULockOnTargetComponent*, Invader, FName, Socket);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnOwnerReleased, class ULockOnTargetComponent*, OldInvader);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnTargetEndPlay, class UTargetingHelperComponent* /**HelperComponent*/, EEndPlayReason::Type /**Reason*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnSocketRemoved, FName /**RemovedSocket*/);
+
+DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_TwoParams(FOnOwnerCaptured, UTargetingHelperComponent, OnOwnerCaptured, class ULockOnTargetComponent*, Invader, FName, Socket);
+DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_OneParam(FOnOwnerReleased, UTargetingHelperComponent, OnOwnerReleased, class ULockOnTargetComponent*, OldInvader);
 
 /** Determines focus point type. */
 UENUM(BlueprintType)
@@ -45,7 +48,8 @@ class LOCKONTARGET_API UTargetingHelperComponent : public UActorComponent
 
 public:
 	UTargetingHelperComponent();
-	friend FHelperVisualizer;
+
+	//@TODO: Fix alignment.
 
 public:
 	/** 
@@ -97,7 +101,7 @@ public:
 public:
 	/** Whether the Target wants to display any widget. */
 	UPROPERTY(EditAnywhere, Category = "Widget")
-	uint8 bWantsDisplayWidget : 1;
+	bool bWantsDisplayWidget;
 
 	/** Whether the Target wants to display the custom Widget. If null then the default one will be used. */
 	UPROPERTY(EditAnywhere, Category = "Widget", meta = (EditCondition = "bWantsDisplayWidget"))
@@ -107,6 +111,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Widget", meta = (EditCondition = "bWantsDisplayWidget"))
 	FVector WidgetRelativeOffset;
 
+public:
 	/** Notifies when the Target is captured by a LockOnTargetComponetn. */
 	UPROPERTY(BlueprintAssignable, Category = "Targeting Helper")
 	FOnOwnerCaptured OnOwnerCaptured;
@@ -114,6 +119,12 @@ public:
 	/** Notifies when the Target is released by a LockOnTargetComponetn. */
 	UPROPERTY(BlueprintAssignable, Category = "Targeting Helper")
 	FOnOwnerReleased OnOwnerReleased;
+
+	//Called during EndPlay.
+	FOnTargetEndPlay OnTargetEndPlay;
+
+	//Called when the socket was successfully removed.
+	FOnSocketRemoved OnSocketRemoved;
 
 private:
 	/** All Invaders. Usually 1 in standalone. Multiple in Network. */

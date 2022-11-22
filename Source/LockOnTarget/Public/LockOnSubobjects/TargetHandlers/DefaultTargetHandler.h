@@ -121,7 +121,7 @@ public:
 	bool bIsSwitchingTarget = false;
 
 public:
-	void PrepareIteratorTargetContext(FName Socket);
+	void PrepareTargetSocket(FName Socket);
 
 private:
 	bool VectorToScreenPosition(const FVector& Location, FVector2D& OutScreenPosition) const;
@@ -134,7 +134,7 @@ private:
  * Find Target execution flow:
  * - FindTargetInternal() - Iterates over TargetingHelperComponents (hereinafter a Target), prepares context.
  *		- IsTargetable() - Checks wether the Target can be processed.
- *		- [BP] IsTargetableCustom() - Checks whether the Target is within the capture radius.
+ *		- [BP] IsTargetableCustom() - Custom checks.
  *		- FindBestSocket() - Iterates over Target's sockets and finds the best one by calculating a modifier that will be associated with the Target.
  *			- [C++] PreModifierCalculation() - Checks wether the modifier should be calculated for the Socket.
  *			- [BP] CalculateModifier() - Calculates the modifier for the Socket.
@@ -144,7 +144,7 @@ private:
  * 
  * @see UTargetHandlerBase.
  */
-UCLASS(Blueprintable, ClassGroup = (LockOnTarget))
+UCLASS(Blueprintable, ClassGroup = (LockOnTarget), Config=Game, DefaultConfig)
 class LOCKONTARGET_API UDefaultTargetHandler : public UTargetHandlerBase
 {
 	GENERATED_BODY()
@@ -159,6 +159,13 @@ public: /** Config */
 	/** Auto find a new Target on a certain flag failure. If the Target is destroyed and the TargetInvalidation flag is set then try to find a new Target. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (BitMask, BitmaskEnum = "EUnlockReasonBitmask"))
 	uint8 AutoFindTargetFlags;
+
+	/** 
+	 * Perform distance check to the Target.
+	 * Warning: It's not recommended to disable as it can sort out most of the Targets very quickly on earlier stages!
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings")
+	bool bDistanceCheck;
 
 	/** Capture a Target that is only on the screen. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings")
@@ -182,6 +189,8 @@ public: /** Config */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f, EditCondition = "!bScreenCapture", EditConditionHides, Units="deg"))
 	float CaptureAngle;
 
+	//~-----------------------------------------------------------------------------------------------------------------------------
+
 	/** Increases the influence of the distance to the Target's socket on the final modifier. */
 	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f, Units = "x"))
 	float DistanceWeight;
@@ -201,6 +210,8 @@ public: /** Config */
 	/** Transform the view rotation (basically a camera rotation) by this rotator. Used to adjust the screen center for the AngleWeightWhileFinding. */
 	UPROPERTY(EditAnywhere, Category = "Default Solver", meta = (EditCondition = "AngleWeightWhileFinding > 0"))
 	FRotator ViewRotationOffset;
+
+	//~-----------------------------------------------------------------------------------------------------------------------------
 
 	/** Targets within this angle range will be processed while switching. Added to both sides of the player's input direction (in screen space). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target Switching", meta = (ClampMin = 0.f, ClampMax = 180.f, UIMin = 0.f, UIMax = 180.f, Units="deg"))
@@ -231,30 +242,62 @@ public: /** Config */
 	float CheckInterval;
 
 	/** Multiply the CaptureRadius in the HelperComponent. May be useful for the progression. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Misc", meta = (UIMin = 0.f, ClampMin = 0.f, Units = "x"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Misc", meta = (UIMin = 0.f, ClampMin = 0.f, Units = "x", EditCondition = "bDistanceCheck", EditConditionHides))
 	float TargetCaptureRadiusModifier;
 
 	/** Will be called when any Target's modifier is calculated. Basically used by FGDC_LockOnTarget to simulate the TargetHandler. */
 	FOnModifierCalculated OnModifierCalculated;
 
+private: /** Advanced Config */
+
+	//Modifier default value before weights are applied.
+	UPROPERTY(Config)
+	float PureDefaultModifier;
+
+	//Precision below which the weight won't be taken into account.
+	UPROPERTY(Config)
+	float WeightPrecision;
+
+	//Distance max factor above which the distance won't be taken into account (in uu).
+	UPROPERTY(Config)
+	float DistanceMaxFactor;
+
+	//Angle max factor above which the angle won't be taken into account (in deg).
+	UPROPERTY(Config)
+	float AngleMaxFactor;
+
+	//Due to the best Target should have the least modifier we want to avoid an exact match with the 0.f modifier.
+	//e.g. don't capture the most centered Target on the screen at 10'000m while we have a Target in front of us.
+	//So, we have something like a free zone (threshold), where several Target will have the same least modifier.
+	UPROPERTY(Config)
+	float MinimumThreshold;
+
 protected: /** TargetHandlerBase overrides */
 	virtual FTargetInfo FindTarget_Implementation(FVector2D PlayerInput) override;
 	virtual bool CanContinueTargeting_Implementation() override;
+	virtual void HandleTargetEndPlay_Implementation(UTargetingHelperComponent* HelperComponent) override;
+	virtual void HandleSocketRemoval_Implementation(FName RemovedSocket) override;
+
+protected: /** LockOnTargetModuleBase overrides */
+	virtual void Initialize(ULockOnTargetComponent* Instigator) override;
 	virtual void OnTargetUnlocked(UTargetingHelperComponent* UnlockedTarget, FName Socket) override;
+
+protected:
+	bool HandleTargetClearing(EUnlockReasonBitmask UnlockReason);
 
 protected:
 	/** The actual implementation. */
 	FTargetInfo FindTargetInternal(FFindTargetContext& TargetContext);
 	
 	/** Whether the HelperComponent can be captured. Provides only necessary checks. */
-	bool IsTargetable(UTargetingHelperComponent* HelpComp) const;
+	bool IsTargetable(UTargetingHelperComponent* HelperComponent) const;
 
 	/** Can be overridden to provide a custom target check. Provides the CaptureRadius checks by default. */
 	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Default Target Handler")
-	bool IsTargetableCustom(UTargetingHelperComponent* HelperComponent) const;
+	bool IsTargetableCustom(const UTargetingHelperComponent* HelperComponent) const;
 
 	/** Native implementation of the above. */
-	virtual bool IsTargetableCustom_Implementation(UTargetingHelperComponent* HelperComponent) const;
+	virtual bool IsTargetableCustom_Implementation(const UTargetingHelperComponent* HelperComponent) const;
 
 	/** Finds the best socket within the Target. */
 	void FindBestSocket(FTargetModifier& TargetModifier, FFindTargetContext& TargetContext);
@@ -277,10 +320,10 @@ protected:
 	virtual bool PostModifierCalculationCheck_Implementation(const FFindTargetContext& TargetContext) const;
 
 protected: /** Misc */
-	bool HandleTargetClearing(EUnlockReasonBitmask UnlockReason);
 	float GetAngleWeight() const;
 	bool IsTargetOnScreen(FVector2D ScreenPosition) const;
 	FVector2D GetScreenOffset() const;
+	void CheckConfigInvariants() const;
 
 protected: /** Line of Sight handling */
 	virtual void StartLineOfSightTimer();

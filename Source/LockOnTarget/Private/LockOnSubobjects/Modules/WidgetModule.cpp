@@ -33,7 +33,7 @@ void UWidgetModule::Initialize(ULockOnTargetComponent* Instigator)
 		Widget->SetDrawAtDesiredSize(true);
 		Widget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-		if(const APlayerController* const PC = GetLockOnTargetComponent()->GetPlayerController())
+		if(const APlayerController* const PC = Instigator->GetPlayerController())
 		{
 			Widget->SetOwnerPlayer(PC->GetLocalPlayer());
 		}

@@ -11,9 +11,10 @@
  * Responsible for finding and maintaining the Target.
  * 
  * FindTarget() and CanContinueTargeting() must be overridden.
+ * HandleTargetEndPlay() and HandleSocketRemoval() are optional.
  */
 UCLASS(Blueprintable, ClassGroup = (LockOnTarget), Abstract, DefaultToInstanced, EditInlineNew, HideDropdown)
-class LOCKONTARGET_API UTargetHandlerBase : public ULockOnTargetModuleBase
+class LOCKONTARGET_API UTargetHandlerBase : public ULockOnTargetModuleProxy
 {
 	GENERATED_BODY()
 
@@ -40,7 +41,17 @@ public: /** Target Handler Interface */
 	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Target Handler Base")
 	bool CanContinueTargeting();
 
+	/** Chance to handle Target EndPlay before LockOnTargetComponent. */
+	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget|Target Handler Basse")
+	void HandleTargetEndPlay(UTargetingHelperComponent* HelperComponent);
+
+	/** Chance to handle Target SocketRemoval before LockOnTargetComponent. */
+	UFUNCTION(BlueprintNativeEvent, Category = "LockOnTarget| Target Handler Base")
+	void HandleSocketRemoval(FName RemovedSocket);
+
 private: /** Internal */
 	virtual FTargetInfo FindTarget_Implementation(FVector2D PlayerInput);
 	virtual bool CanContinueTargeting_Implementation();
+	virtual void HandleTargetEndPlay_Implementation(UTargetingHelperComponent* HelperComponent);
+	virtual void HandleSocketRemoval_Implementation(FName RemovedSocket);
 };

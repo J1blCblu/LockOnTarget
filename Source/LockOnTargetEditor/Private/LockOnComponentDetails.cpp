@@ -79,4 +79,4 @@ void FLockOnComponentDetails::OnDebuggerNavigate()
 	FPlatformProcess::LaunchURL(TEXT("https://github.com/J1blCblu/LockOnTarget/wiki/4.-Gameplay-Debugger-Overview"), nullptr, nullptr);
 }
 
-#undef LOCKEXT_NAMESPACE
+#undef LOCTEXT_NAMESPACE

@@ -13,23 +13,6 @@
 #include "UObject/UObjectIterator.h"
 #include <type_traits>
 
-//@TODO: Maybe move to the config properties or project settings.
-namespace DTH_SolverConfig
-{
-	//Modifier default value before weights are applied.
-	constexpr float PureDefaultModifier = 1000.f;
-	//Precision below which the weight won't be taken into account.
-	constexpr float WeightPrecision = 1e-2f;
-	//Distance max factor above which the distance won't be taken into account (in uu).
-	constexpr float DistanceMaxFactor = 2750.f;
-	//Angle max factor above which the angle won't be taken into account (in deg).
-	constexpr float AngleMaxFactor = 90.f;
-	//Due to the best Target should have the least modifier we want to avoid an exact match with the 0.f modifier.
-	//e.g. don't capture the most centered Target on the screen at 10'000m while we have a Target in front of us.
-	//So, we have something like a free zone (threshold), where several Target will have the same least modifier.
-	constexpr float MinimumThreshold = 0.035f;
-}
-
 //----------------------------------------------------------------//
 //  FTargetModifier
 //----------------------------------------------------------------//
@@ -63,10 +46,8 @@ FFindTargetContext::FFindTargetContext(UDefaultTargetHandler* Owner, ULockOnTarg
 	}
 }
 
-void FFindTargetContext::PrepareIteratorTargetContext(FName Socket)
+void FFindTargetContext::PrepareTargetSocket(FName Socket)
 {
-	check(IteratorTarget.HelperComponent);
-
 	IteratorTarget.SocketName = Socket;
 	IteratorTarget.SocketWorldLocation = IteratorTarget.HelperComponent->GetSocketLocation(IteratorTarget.SocketName);
 
@@ -88,6 +69,7 @@ bool FFindTargetContext::VectorToScreenPosition(const FVector& Location, FVector
 
 UDefaultTargetHandler::UDefaultTargetHandler()
 	: AutoFindTargetFlags(0b00011111)
+	, bDistanceCheck(true)
 	, bScreenCapture(true)
 	, FindingScreenOffset(15.f, 10.f)
 	, SwitchingScreenOffset(7.5f, 2.5f)
@@ -102,6 +84,11 @@ UDefaultTargetHandler::UDefaultTargetHandler()
 	, LostTargetDelay(3.f)
 	, CheckInterval(0.1f)
 	, TargetCaptureRadiusModifier(1.f)
+	, PureDefaultModifier(1000.f)
+	, WeightPrecision(1e-2f)
+	, DistanceMaxFactor(2750.f)
+	, AngleMaxFactor(90.f)
+	, MinimumThreshold(0.035f)
 	, CheckTimer(0.f)
 {
 	TraceObjectChannels.Emplace(ECollisionChannel::ECC_WorldStatic);
@@ -112,6 +99,12 @@ UDefaultTargetHandler::UDefaultTargetHandler()
 /*******************************************************************************************/
 /******************************* Target Handler Interface **********************************/
 /*******************************************************************************************/
+
+void UDefaultTargetHandler::Initialize(ULockOnTargetComponent* Instigator)
+{
+	Super::Initialize(Instigator);
+	CheckConfigInvariants();
+}
 
 void UDefaultTargetHandler::OnTargetUnlocked(UTargetingHelperComponent* UnlockedTarget, FName Socket)
 {
@@ -136,11 +129,7 @@ bool UDefaultTargetHandler::CanContinueTargeting_Implementation()
 	const UTargetingHelperComponent* const CurrentHC = LockOn->GetHelperComponent();
 	const AActor* const CurrentTarget = LockOn->GetTarget();
 
-	//Check if the TargetingHelperComponent or the TargetActor are pending to kill.
-	if (!IsValid(CurrentTarget))
-	{
-		return HandleTargetClearing(EUnlockReasonBitmask::TargetInvalidation);
-	}
+	check(LockOn && CurrentHC && CurrentTarget);
 
 	//Check the TargetingHelperComponent state.
 	if (!CurrentHC->CanBeCaptured(LockOn))
@@ -148,19 +137,17 @@ bool UDefaultTargetHandler::CanContinueTargeting_Implementation()
 		return HandleTargetClearing(EUnlockReasonBitmask::HelperComponentDiscard);
 	}
 
-	const float DistanceToTarget = (CurrentTarget->GetActorLocation() - LockOn->GetCameraLocation()).Size();
-
 	//Lost Distance check.
-	if (DistanceToTarget > (CurrentHC->CaptureRadius * TargetCaptureRadiusModifier + CurrentHC->LostOffsetRadius))
+	if(bDistanceCheck)
 	{
-		return HandleTargetClearing(EUnlockReasonBitmask::OutOfLostDistance);
-	}
-
-	//@TODO: Use listener pattern instead with the delegate in the HelperComponent.
-	//Check the validity of the captured socket.
-	if (!CurrentHC->GetSockets().Contains(LockOn->GetCapturedSocket()))
-	{
-		return HandleTargetClearing(EUnlockReasonBitmask::CapturedSocketInvalidation);
+		//Here we can use SquaredDistance, cause user won't see it in the GameplayDebugger.
+		const float DistanceToTarget = (CurrentTarget->GetActorLocation() - LockOn->GetCameraLocation()).SizeSquared();
+		const float LostRadius = CurrentHC->CaptureRadius * TargetCaptureRadiusModifier + CurrentHC->LostOffsetRadius;
+		
+		if (DistanceToTarget > FMath::Square(LostRadius))
+		{
+			return HandleTargetClearing(EUnlockReasonBitmask::OutOfLostDistance);
+		}
 	}
 
 	//Line of Sight check.
@@ -170,6 +157,23 @@ bool UDefaultTargetHandler::CanContinueTargeting_Implementation()
 	}
 
 	return true;
+}
+
+void UDefaultTargetHandler::HandleTargetEndPlay_Implementation(UTargetingHelperComponent* HelperComponent)
+{
+	HandleTargetClearing(EUnlockReasonBitmask::TargetInvalidation);
+}
+
+void UDefaultTargetHandler::HandleSocketRemoval_Implementation(FName RemovedSocket)
+{
+	HandleTargetClearing(EUnlockReasonBitmask::CapturedSocketInvalidation);
+}
+
+bool UDefaultTargetHandler::HandleTargetClearing(EUnlockReasonBitmask UnlockReason)
+{
+	ULockOnTargetComponent* const LockOn = GetLockOnTargetComponent();
+	LockOn->ClearTargetManual(AutoFindTargetFlags & static_cast<std::underlying_type_t<EUnlockReasonBitmask>>(UnlockReason));
+	return LockOn->IsTargetLocked();
 }
 
 /*******************************************************************************************/
@@ -194,52 +198,51 @@ FTargetInfo UDefaultTargetHandler::FindTargetInternal(FFindTargetContext& Target
 	return BestTarget.TargetInfo;
 }
 
-bool UDefaultTargetHandler::IsTargetable(UTargetingHelperComponent* HelpComp) const
+bool UDefaultTargetHandler::IsTargetable(UTargetingHelperComponent* HelperComponent) const
 {
 	DTH_EVENT(IsTargetable, Yellow);
 
-	//Necessary checks are here, auxiliary checks are in IsTargetableCustom().
-	const ULockOnTargetComponent* const LockOn = GetLockOnTargetComponent();
-	const AActor* const HelperOwner = HelpComp->GetOwner();
+	const AActor* const HelperOwner = HelperComponent->GetOwner();
 
-	/** Check validity of the TargetingHelperComponent's Owner. */
+	/** Target should have a valid owner. */
 	if (!IsValid(HelperOwner))
 	{
 		return false;
 	}
 
-	/** Check that a Candidate is not the Owner (to not capture yourself). */
+	const ULockOnTargetComponent* const LockOn = GetLockOnTargetComponent();
+
+	/** Capturing yourself isn't allowed. */
 	if (HelperOwner == LockOn->GetOwner())
 	{
 		return false;
 	}
 
-	/** Check TargetingHelperComponent's condition. */
-	if (!HelpComp->CanBeCaptured(LockOn))
+	/** Can the Target actually be captured. */
+	if (!HelperComponent->CanBeCaptured(LockOn))
 	{
 		return false;
 	}
 
-	return IsTargetableCustom(HelpComp);
+	/** Check the distance to the Target. */
+	if (bDistanceCheck)
+	{
+		const float DistanceToTarget = (LockOn->GetCameraLocation() - HelperOwner->GetActorLocation()).SizeSquared();
+		const float CaptureRadius = FMath::Square(HelperComponent->CaptureRadius * TargetCaptureRadiusModifier);
+		const float MinimumCaptureRadius = FMath::Square(HelperComponent->MinimumCaptureRadius);
+
+		if (DistanceToTarget > CaptureRadius || DistanceToTarget < MinimumCaptureRadius)
+		{
+			return false;
+		}
+	}
+
+	return IsTargetableCustom(HelperComponent);
 }
 
-bool UDefaultTargetHandler::IsTargetableCustom_Implementation(UTargetingHelperComponent* HelperComponent) const
+bool UDefaultTargetHandler::IsTargetableCustom_Implementation(const UTargetingHelperComponent* HelperComponent) const
 {
-	//@TODO: Maybe calculate size squared to avoid the root computation.
-	const float DistanceToTarget = (HelperComponent->GetOwner()->GetActorLocation() - GetLockOnTargetComponent()->GetCameraLocation()).Size();
-
-	/** Capture the Target radius check. */
-	if (DistanceToTarget > (HelperComponent->CaptureRadius * TargetCaptureRadiusModifier))
-	{
-		return false;
-	}
-
-	/** MinimumCaptureRadius to the Camera check. */
-	if (DistanceToTarget < HelperComponent->MinimumCaptureRadius)
-	{
-		return false;
-	}
-
+	//Unimplemented.
 	return true;
 }
 
@@ -249,7 +252,7 @@ void UDefaultTargetHandler::FindBestSocket(FTargetModifier& TargetModifier, FFin
 	{
 		DTH_EVENT(SocketCalc, Blue);
 
-		TargetContext.PrepareIteratorTargetContext(TargetSocket);
+		TargetContext.PrepareTargetSocket(TargetSocket);
 
 		if (PreModifierCalculationCheck(TargetContext))
 		{
@@ -300,7 +303,7 @@ bool UDefaultTargetHandler::PreModifierCalculationCheck(const FFindTargetContext
 	}
 	else
 	{
-		const ULockOnTargetComponent* const LockOn = GetLockOnTargetComponent();
+		const ULockOnTargetComponent* const LockOn = TargetContext.LockOnTargetComponent;
 		const FVector DirectionToSocket = TargetContext.IteratorTarget.SocketWorldLocation - LockOn->GetCameraLocation();
 		const float Angle = LOT_Math::GetAngle(LockOn->GetCameraForwardVector(), DirectionToSocket);
 
@@ -317,10 +320,7 @@ float UDefaultTargetHandler::CalculateTargetModifier_Implementation(const FFindT
 {
 	DTH_EVENT(ModifierCalc, Red);
 
-	const FVector CameraLocation = GetLockOnTargetComponent()->GetCameraLocation();
-	const FVector DirectionToTargetSocket = TargetContext.IteratorTarget.SocketWorldLocation - CameraLocation;
-
-	float FinalModifier = DTH_SolverConfig::PureDefaultModifier;
+	float FinalModifier = PureDefaultModifier;
 
 	//Final modifier will be divided into 2 parts by a weight proportion.
 	//1 part will be unmodified and another one will be modified by a factor.
@@ -331,29 +331,43 @@ float UDefaultTargetHandler::CalculateTargetModifier_Implementation(const FFindT
 		FinalModifier = FinalModifier * (1.f - Weight) + FinalModifier * Weight * Factor;
 	};
 
+	const FVector CameraLocation = TargetContext.LockOnTargetComponent->GetCameraLocation();
+	const FVector DirectionToTargetSocket = TargetContext.IteratorTarget.SocketWorldLocation - CameraLocation;
+
 	//Distance weight modifier adjustment.
-	if (DistanceWeight > DTH_SolverConfig::WeightPrecision)
+	if (DistanceWeight > WeightPrecision)
 	{
-		ApplyFactor(DistanceWeight, FMath::Min(DirectionToTargetSocket.Size() / DTH_SolverConfig::DistanceMaxFactor, 1.f));
+		const float DistanceRatio = DirectionToTargetSocket.SizeSquared() / FMath::Square(DistanceMaxFactor);
+		ApplyFactor(DistanceWeight, FMath::Min(DistanceRatio, 1.f));
 	}
 
 	//Angle weight modifier adjustment.
-	if (GetAngleWeight() > DTH_SolverConfig::WeightPrecision)
+	if (GetAngleWeight() > WeightPrecision)
 	{
+		FVector Direction;
+
 		//If any Target is locked then use the direction to the captured socket, otherwise the camera rotation will be used with an offset.
-		const FVector Direction = TargetContext.bIsSwitchingTarget ? TargetContext.CurrentTarget.SocketWorldLocation - CameraLocation 
-			: (TargetContext.LockOnTargetComponent->GetCameraRotation().Quaternion() * ViewRotationOffset.Quaternion()).GetAxisX();
+		if(TargetContext.bIsSwitchingTarget)
+		{
+			Direction = TargetContext.CurrentTarget.SocketWorldLocation - CameraLocation;
+		}
+		else
+		{
+			Direction = (TargetContext.LockOnTargetComponent->GetCameraRotation().Quaternion() * ViewRotationOffset.Quaternion()).GetAxisX();
+		}
 
 		const float DeltaAngle = LOT_Math::GetAngle(DirectionToTargetSocket, Direction);
-		ApplyFactor(GetAngleWeight(), FMath::Clamp(DeltaAngle / DTH_SolverConfig::AngleMaxFactor, DTH_SolverConfig::MinimumThreshold, 1.f));
+		ApplyFactor(GetAngleWeight(), FMath::Clamp(DeltaAngle / AngleMaxFactor, MinimumThreshold, 1.f));
 	}
 
 	//Player input weight modifier adjustment.
-	if (TargetContext.bIsSwitchingTarget && PlayerInputWeight > DTH_SolverConfig::WeightPrecision
-		&& TargetContext.CurrentTarget.bIsScreenPositionValid && TargetContext.IteratorTarget.bIsScreenPositionValid)
+	if (TargetContext.bIsSwitchingTarget 
+		&& PlayerInputWeight > WeightPrecision
+		&& TargetContext.CurrentTarget.bIsScreenPositionValid 
+		&& TargetContext.IteratorTarget.bIsScreenPositionValid)
 	{
 		const float InputDeltaAngle = LOT_Math::GetAngle(TargetContext.PlayerRawInput, TargetContext.IteratorTarget.SocketScreenPosition - TargetContext.CurrentTarget.SocketScreenPosition);
-		ApplyFactor(PlayerInputWeight, FMath::Clamp(InputDeltaAngle / AngleRange, DTH_SolverConfig::MinimumThreshold, 1.f));
+		ApplyFactor(PlayerInputWeight, FMath::Clamp(InputDeltaAngle / AngleRange, MinimumThreshold, 1.f));
 	}
 
 	return FinalModifier;
@@ -375,13 +389,6 @@ bool UDefaultTargetHandler::PostModifierCalculationCheck_Implementation(const FF
 /*******************************************************************************************/
 /*************************************** Misc **********************************************/
 /*******************************************************************************************/
-
-bool UDefaultTargetHandler::HandleTargetClearing(EUnlockReasonBitmask UnlockReason)
-{
-	ULockOnTargetComponent* const LockOn = GetLockOnTargetComponent();
-	LockOn->ClearTargetManual(AutoFindTargetFlags & static_cast<std::underlying_type_t<EUnlockReasonBitmask>>(UnlockReason));
-	return LockOn->IsTargetLocked();
-}
 
 bool UDefaultTargetHandler::IsTargetOnScreen(FVector2D ScreenPosition) const
 {
@@ -412,6 +419,15 @@ FVector2D UDefaultTargetHandler::GetScreenOffset() const
 float UDefaultTargetHandler::GetAngleWeight() const
 {
 	return GetLockOnTargetComponent()->IsTargetLocked() ? AngleWeightWhileSwitching : AngleWeightWhileFinding;;
+}
+
+void UDefaultTargetHandler::CheckConfigInvariants() const
+{
+	check(PureDefaultModifier > 0.f);
+	check(DistanceMaxFactor > 0.f);
+	check(WeightPrecision > 0.f && WeightPrecision < 1.f);
+	check(AngleMaxFactor > 0.f && AngleMaxFactor < 180.f);
+	check(MinimumThreshold > 0.f && MinimumThreshold < 1.f);
 }
 
 /*******************************************************************************************/

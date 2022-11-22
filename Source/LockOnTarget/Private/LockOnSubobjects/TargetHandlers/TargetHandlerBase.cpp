@@ -16,3 +16,13 @@ bool UTargetHandlerBase::CanContinueTargeting_Implementation()
 	unimplemented();
 	return false;
 }
+
+void UTargetHandlerBase::HandleTargetEndPlay_Implementation(UTargetingHelperComponent* HelperComponent)
+{
+	//Optional.
+}
+
+void UTargetHandlerBase::HandleSocketRemoval_Implementation(FName RemovedSocket)
+{
+	//Optional.
+}

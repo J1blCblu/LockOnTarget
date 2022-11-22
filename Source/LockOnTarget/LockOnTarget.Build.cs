@@ -9,10 +9,16 @@ public class LockOnTarget : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
+		//Non-Unity build.
+
 		//https://forums.unrealengine.com/t/how-to-compile-in-non-unity-mode/94863/5
-		//Add in *project*Editor.Target.cs
+		//Add the following to *project*Editor.Target.cs to activate for the project.
 		//bUseUnityBuild = false;
 		//bUsePCHFiles = false;
+		
+		//Or uncomment this for the current module.
+		//bEnforceIWYU = true;
+		//bUseUnity = false;
 
 		//Lock On Target Unreal Insights preprocessor definition.
 		PublicDefinitions.Add("LOT_INSIGHTS = 0");

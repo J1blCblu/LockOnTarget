@@ -4,7 +4,7 @@
 #include "LockOnTargetComponent.h"
 #include "LockOnTargetDefines.h"
 
-ULockOnTargetModuleBase::ULockOnTargetModuleBase()
+ULockOnTargetModuleProxy::ULockOnTargetModuleProxy()
 	: LockOnTargetComponent(nullptr)
 	, bIsInitialized(false)
 	, bWantsUpdate(true)
@@ -13,7 +13,7 @@ ULockOnTargetModuleBase::ULockOnTargetModuleBase()
 	//Do something.
 }
 
-void ULockOnTargetModuleBase::BeginDestroy()
+void ULockOnTargetModuleProxy::BeginDestroy()
 {
 	// If we're in the process of being garbage collected it is unsafe to call out to blueprints.
 	checkf(!bIsInitialized, TEXT("Module should be deinitialized first. Maybe it was marked as garbage manually."));
@@ -21,27 +21,27 @@ void ULockOnTargetModuleBase::BeginDestroy()
 	Super::BeginDestroy();
 }
 
-UWorld* ULockOnTargetModuleBase::GetWorld() const
+UWorld* ULockOnTargetModuleProxy::GetWorld() const
 {
 	return (IsValid(GetOuter()) && (!GIsEditor || GIsPlayInEditorWorld)) ? GetOuter()->GetWorld() : nullptr;
 }
 
-ULockOnTargetComponent* ULockOnTargetModuleBase::GetLockOnTargetComponent() const
+ULockOnTargetComponent* ULockOnTargetModuleProxy::GetLockOnTargetComponent() const
 {
 	return LockOnTargetComponent.IsValid() ? LockOnTargetComponent.Get() : GetLockOnTargetComponentFromOuter();
 }
 
-ULockOnTargetComponent* ULockOnTargetModuleBase::GetLockOnTargetComponentFromOuter() const
+ULockOnTargetComponent* ULockOnTargetModuleProxy::GetLockOnTargetComponentFromOuter() const
 {
 	//In some cases the outer can be a transient package in the editor.
 	check(GetOuter() && GetOuter()->IsA(ULockOnTargetComponent::StaticClass()));
 	return StaticCast<ULockOnTargetComponent*>(GetOuter());
 }
 
-void ULockOnTargetModuleBase::InitializeModule(ULockOnTargetComponent* Instigator)
+void ULockOnTargetModuleProxy::InitializeModule(ULockOnTargetComponent* Instigator)
 {
 	check(!bIsInitialized);
-	check(Instigator);
+	check(Instigator && Instigator == GetOuter());
 
 	LockOnTargetComponent = Instigator;
 	BindToLockOn();
@@ -56,12 +56,12 @@ void ULockOnTargetModuleBase::InitializeModule(ULockOnTargetComponent* Instigato
 	}
 }
 
-void ULockOnTargetModuleBase::Initialize(ULockOnTargetComponent* Instigator)
+void ULockOnTargetModuleProxy::Initialize(ULockOnTargetComponent* Instigator)
 {
 	//Unimplemented.
 }
 
-void ULockOnTargetModuleBase::BindToLockOn()
+void ULockOnTargetModuleProxy::BindToLockOn()
 {
 	LockOnTargetComponent->OnTargetLocked.AddDynamic(this, &ThisClass::OnTargetLockedPrivate);
 	LockOnTargetComponent->OnTargetUnlocked.AddDynamic(this, &ThisClass::OnTargetUnlockedPrivate);
@@ -69,7 +69,7 @@ void ULockOnTargetModuleBase::BindToLockOn()
 	LockOnTargetComponent->OnTargetNotFound.AddDynamic(this, &ThisClass::OnTargetNotFoundPrivate);
 }
 
-void ULockOnTargetModuleBase::DeinitializeModule(ULockOnTargetComponent* Instigator)
+void ULockOnTargetModuleProxy::DeinitializeModule(ULockOnTargetComponent* Instigator)
 {
 	check(bIsInitialized);
 	//Module must be deinitialized by the same Instigator.
@@ -89,12 +89,12 @@ void ULockOnTargetModuleBase::DeinitializeModule(ULockOnTargetComponent* Instiga
 	MarkAsGarbage();
 }
 
-void ULockOnTargetModuleBase::Deinitialize(ULockOnTargetComponent* Instigator)
+void ULockOnTargetModuleProxy::Deinitialize(ULockOnTargetComponent* Instigator)
 {
 	//Unimplemented.
 }
 
-void ULockOnTargetModuleBase::UnbindFromLockOn()
+void ULockOnTargetModuleProxy::UnbindFromLockOn()
 {
 	LockOnTargetComponent->OnTargetLocked.RemoveDynamic(this, &ThisClass::OnTargetLockedPrivate);
 	LockOnTargetComponent->OnTargetUnlocked.RemoveDynamic(this, &ThisClass::OnTargetUnlockedPrivate);
@@ -102,51 +102,54 @@ void ULockOnTargetModuleBase::UnbindFromLockOn()
 	LockOnTargetComponent->OnTargetNotFound.RemoveDynamic(this, &ThisClass::OnTargetNotFoundPrivate);
 }
 
-void ULockOnTargetModuleBase::OnTargetLockedPrivate(UTargetingHelperComponent* Target, FName Socket)
+void ULockOnTargetModuleProxy::OnTargetLockedPrivate(UTargetingHelperComponent* Target, FName Socket)
 {
+	check(Target);
 	OnTargetLocked(Target, Socket);
 	K2_OnTargetLocked(Target, Socket);
 }
 
-void ULockOnTargetModuleBase::OnTargetLocked(UTargetingHelperComponent* Target, FName Socket)
+void ULockOnTargetModuleProxy::OnTargetLocked(UTargetingHelperComponent* Target, FName Socket)
 {
 	//Unimplemented.
 }
 
-void ULockOnTargetModuleBase::OnTargetUnlockedPrivate(UTargetingHelperComponent* UnlockedTarget, FName Socket)
+void ULockOnTargetModuleProxy::OnTargetUnlockedPrivate(UTargetingHelperComponent* UnlockedTarget, FName Socket)
 {
+	check(UnlockedTarget);
 	OnTargetUnlocked(UnlockedTarget, Socket);
 	K2_OnTargetUnlocked(UnlockedTarget, Socket);
 }
 
-void ULockOnTargetModuleBase::OnTargetUnlocked(UTargetingHelperComponent* UnlockedTarget, FName Socket)
+void ULockOnTargetModuleProxy::OnTargetUnlocked(UTargetingHelperComponent* UnlockedTarget, FName Socket)
 {
 	//Unimplemented.
 }
 
-void ULockOnTargetModuleBase::OnSocketChangedPrivate(UTargetingHelperComponent* CurrentTarget, FName NewSocket, FName OldSocket)
+void ULockOnTargetModuleProxy::OnSocketChangedPrivate(UTargetingHelperComponent* CurrentTarget, FName NewSocket, FName OldSocket)
 {
+	check(CurrentTarget);
 	OnSocketChanged(CurrentTarget, NewSocket, OldSocket);
 	K2_OnSocketChanged(CurrentTarget, NewSocket, OldSocket);
 }
 
-void ULockOnTargetModuleBase::OnSocketChanged(UTargetingHelperComponent* CurrentTarget, FName NewSocket, FName OldSocket)
+void ULockOnTargetModuleProxy::OnSocketChanged(UTargetingHelperComponent* CurrentTarget, FName NewSocket, FName OldSocket)
 {
 	//Unimplemented.
 }
 
-void ULockOnTargetModuleBase::OnTargetNotFoundPrivate()
+void ULockOnTargetModuleProxy::OnTargetNotFoundPrivate()
 {
 	OnTargetNotFound();
 	K2_OnTargetNotFound();
 }
 
-void ULockOnTargetModuleBase::OnTargetNotFound()
+void ULockOnTargetModuleProxy::OnTargetNotFound()
 {
 	//Unimplemented.
 }
 
-void ULockOnTargetModuleBase::Update(FVector2D PlayerInput, float DeltaTime)
+void ULockOnTargetModuleProxy::Update(FVector2D PlayerInput, float DeltaTime)
 {
 	if (bWantsUpdate && (!bUpdateOnlyWhileLocked || GetLockOnTargetComponent()->IsTargetLocked()))
 	{
@@ -157,14 +160,14 @@ void ULockOnTargetModuleBase::Update(FVector2D PlayerInput, float DeltaTime)
 	}
 }
 
-void ULockOnTargetModuleBase::UpdateOverridable(FVector2D PlayerInput, float DeltaTime)
+void ULockOnTargetModuleProxy::UpdateOverridable(FVector2D PlayerInput, float DeltaTime)
 {
 	//Unimplemented.
 }
 
 #if WITH_EDITOR
 
-bool ULockOnTargetModuleBase::CanEditChange(const FProperty* InProperty) const
+bool ULockOnTargetModuleProxy::CanEditChange(const FProperty* InProperty) const
 {
 	bool bSuper = Super::CanEditChange(InProperty);
 
