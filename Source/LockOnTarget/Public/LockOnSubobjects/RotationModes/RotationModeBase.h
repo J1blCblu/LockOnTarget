@@ -51,7 +51,7 @@ public:
 	FRotator OffsetRotation;
 	
 	/** Axes applied to the returned rotation. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Base Config", meta = (Bitmask, BitmaskEnum = "ERot"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Base Config", meta = (Bitmask, BitmaskEnum = "/Script/LockOnTarget.ERot"))
 	uint8 RotationAxes;
 
 public:

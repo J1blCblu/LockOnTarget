@@ -157,7 +157,7 @@ public:
 public: /** Config */
 
 	/** Auto find a new Target on a certain flag failure. If the Target is destroyed and the TargetInvalidation flag is set then try to find a new Target. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (BitMask, BitmaskEnum = "EUnlockReasonBitmask"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default Settings", meta = (BitMask, BitmaskEnum = "/Script/LockOnTarget.EUnlockReasonBitmask"))
 	uint8 AutoFindTargetFlags;
 
 	/** 
