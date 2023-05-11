@@ -1,7 +1,7 @@
 {
 	"FileVersion": 1,
 	"Version": 1,
-	"VersionName": "1.4.2",
+	"VersionName": "1.5.0",
 	"EngineVersion": "5.1.0",
 	"FriendlyName": "LockOnTarget",
 	"Description": "Lock On Target system",
@@ -21,6 +21,11 @@
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault",
 			"WhitelistPlatforms": [ "Win64", "Linux" ]
+		},
+		{
+			"Name": "LockOnTargetDev",
+			"Type": "DeveloperTool",
+			"LoadingPhase": "Default"
 		},
 		{
 			"Name": "LockOnTargetEditor",

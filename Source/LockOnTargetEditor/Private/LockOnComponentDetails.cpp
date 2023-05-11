@@ -1,4 +1,4 @@
-// Copyright 2022 Ivan Baktenkov. All Rights Reserved.
+// Copyright 2022-2023 Ivan Baktenkov. All Rights Reserved.
 
 #include "LockOnComponentDetails.h"
 #include "LockOnTargetComponent.h"

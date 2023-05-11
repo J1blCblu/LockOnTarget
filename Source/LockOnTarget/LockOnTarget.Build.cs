@@ -1,4 +1,4 @@
-// Copyright 2022 Ivan Baktenkov. All Rights Reserved.
+// Copyright 2022-2023 Ivan Baktenkov. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -22,20 +22,6 @@ public class LockOnTarget : ModuleRules
 
 		//Lock On Target Unreal Insights preprocessor definition.
 		PublicDefinitions.Add("LOT_INSIGHTS = 0");
-
-		PublicIncludePaths.AddRange(
-			new string[] 
-			{
-				Path.Combine(ModuleDirectory, "Public/Utilities"),
-			}
-			);
-				
-		PrivateIncludePaths.AddRange(
-			new string[] 
-			{
-
-			}
-			);
 			
 		PublicDependencyModuleNames.AddRange(
 			new string[]
@@ -54,13 +40,6 @@ public class LockOnTarget : ModuleRules
 				"UMG",
 				"Projects",
 				"NetCore",
-			}
-			);
-
-        DynamicallyLoadedModuleNames.AddRange(
-			new string[]
-			{
-
 			}
 			);
 	}

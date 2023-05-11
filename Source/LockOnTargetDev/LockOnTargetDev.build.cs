@@ -2,9 +2,9 @@
 
 using UnrealBuildTool;
 
-public class LockOnTargetEditor : ModuleRules
+public class LockOnTargetDev : ModuleRules
 {
-    public LockOnTargetEditor(ReadOnlyTargetRules Target) : base(Target)
+    public LockOnTargetDev(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
@@ -12,17 +12,12 @@ public class LockOnTargetEditor : ModuleRules
             new string[]
             {
                 "LockOnTarget",
+                "GameplayDebugger",
                 "Core",
                 "CoreUObject",
                 "Engine",
-                "Slate",
-                "SlateCore",
-                "EditorStyle",
                 "InputCore",
-                "PropertyEditor",
-                "UnrealEd",
-                "SceneOutliner", //SSocketChooserPopup
-
+                
             }
             );
     }

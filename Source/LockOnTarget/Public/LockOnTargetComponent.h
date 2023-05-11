@@ -1,66 +1,57 @@
-// Copyright 2022 Ivan Baktenkov. All Rights Reserved.
+// Copyright 2022-2023 Ivan Baktenkov. All Rights Reserved.
 
 #pragma once
 
 #include "Components/ActorComponent.h"
 #include "CoreMinimal.h"
-#include "TargetInfo.h"
-#include "TemplateUtilities.h"
+#include "LockOnTargetTypes.h"
 #include "LockOnTargetComponent.generated.h"
 
-class UTargetingHelperComponent;
-class AController;
-class APlayerController;
+class ULockOnTargetComponent;
+class UTargetComponent;
 class AActor;
 class UTargetHandlerBase;
 class ULockOnTargetModuleBase;
+class ULockOnTargetModuleProxy;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTargetLocked, class UTargetingHelperComponent*, Target, FName, Socket);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTargetUnlocked, class UTargetingHelperComponent*, UnlockedTarget, FName, Socket);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnSocketChanged, class UTargetingHelperComponent*, CurrentTarget, FName, NewSocket, FName, OldSocket);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnTargetNotFound);
+DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_TwoParams(FOnTargetLocked, ULockOnTargetComponent, OnTargetLocked, class UTargetComponent*, Target, FName, Socket);
+DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_TwoParams(FOnTargetUnlocked, ULockOnTargetComponent, OnTargetUnlocked, class UTargetComponent*, UnlockedTarget, FName, Socket);
+DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_ThreeParams(FOnSocketChanged, ULockOnTargetComponent, OnSocketChanged, class UTargetComponent*, CurrentTarget, FName, NewSocket, FName, OldSocket);
+DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE(FOnTargetNotFound, ULockOnTargetComponent, OnTargetNotFound);
 
 /**
- *	LockOnTargetComponent gives the Owner(Player) an ability to find a Target and store it.
+ *	LockOnTargetComponent gives the locally controlled AActor the ability to find and store the Target along with the Socket.
+ *	The Target can be controlled directly by the component or through an optional TargetHandler.
+ *	The component may contain a set of optional Modules, which can be used to add custom cosmetic features.
  * 
- *	LockOnTargetComponent is a wrapper over the next systems:
- *	1. Target storage (TargetingHelperComponent and Socket). Synchronized with the server.
- *	2. Processing the input. Processed locally.
- *	3. TargetHandler - used for Target handling(find, maintenance). Processed locally.
- *	4. Modules - piece of functionality that can be dynamically added/removed.
- * 
- *	Network Design Philosophy:
- *	Lock On Target is just a system which finds a Target, stores and synchronizes it over the network. 
- *	Finding the Target is not a quick operation to process it on the server for each player. 
- *	Due to this and network relevancy opportunities (not relevant Target doesn't exist in the world)
- *	finding the Target processed locally on the owning client.
- * 
- *	@see UTargetingHelperComponent, UTargetHandlerBase, ULockOnTargetModuleBase.
+ *	@see UTargetComponent, UTargetHandlerBase, ULockOnTargetModuleBase.
  */
-UCLASS(Blueprintable, ClassGroup = (LockOnTarget), HideCategories = (Components, Activation, Cooking, ComponentTick, Sockets, Collision), meta = (BlueprintSpawnableComponent))
+UCLASS(Blueprintable, ClassGroup = (LockOnTarget), HideCategories = (Components, Activation, Cooking, Sockets, Collision), meta = (BlueprintSpawnableComponent))
 class LOCKONTARGET_API ULockOnTargetComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
 public:
+
 	ULockOnTargetComponent();
 	friend class FGDC_LockOnTarget; //Gameplay Debugger
-	static const FTargetInfo NULL_TARGET;
 	
-private:
-	/** Can this Component capture a Target. Not replicated. Have affect only for the local owning client. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Default Settings", meta = (AllowPrivateAccess))
+private: /** Core Config */
+
+	/** Can capture any Target. SetCanCaptureTarget() and CanCaptureTarget(). */
+	UPROPERTY(EditAnywhere, Category = "Default Settings")
 	bool bCanCaptureTarget;
 
-	/** Special module that handles the Target. */
-	UPROPERTY(Instanced, EditDefaultsOnly, BlueprintReadOnly, Category = "Default Settings", meta = (AllowPrivateAccess, NoResetToDefault))
+	/** Special module that handles the Target. Get/SetTargetHandler(). */
+	UPROPERTY(Instanced, EditDefaultsOnly, Category = "Default Settings", meta = (NoResetToDefault))
 	TObjectPtr<UTargetHandlerBase> TargetHandlerImplementation;
 	
-	/** Set of default Modules. Will be instantiated on all machines (may be changed in the future). Update order is not defined. */
+	/** Set of customizable dynamic features. The order isn't defined. Add/RemoveModuleByClass(). */
 	UPROPERTY(Instanced, EditDefaultsOnly, Category = "Modules", meta = (DisplayName = "Default Modules", NoResetToDefault))
 	TArray<TObjectPtr<ULockOnTargetModuleBase>> Modules;
 
-public:
+public: /** Input Config */
+
 	/** When the InputBuffer overflows the threshold by the input, the switch method will be called. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Player Input", meta = (ClampMin = 0.f, UIMin = 0.f))
 	float InputBufferThreshold;
@@ -77,33 +68,35 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Player Input", meta = (ClampMin = 0.f, UIMin = 0.f, Units="s"))
 	float InputProcessingDelay;
 
-	/** Freeze InputBuffer filling until the input reaches the UnfreezeThreshold after a successful switch. */
+	/** Freeze the InputBuffer filling until the input reaches the UnfreezeThreshold after a successful switch. */
 	UPROPERTY(EditDefaultsOnly, Category = "Player Input")
 	bool bFreezeInputAfterSwitch;
 
-	/** Unfreeze InputBuffer filling if the input is less than the threshold. */
+	/** Unfreeze the InputBuffer filling if the input is less than the threshold. */
 	UPROPERTY(EditDefaultsOnly, Category = "Player Input", meta = (ClampMin = 0.f, UIMin = 0.f, EditCondition = "bFreezeInputAfterSwitch", EditConditionHides))
 	float UnfreezeThreshold;
 	
-public:
-	/** Called when the Target is locked. */
-	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent")
+public: /** Callbacks */
+
+	/** Called if any Target has been successfully captured. */
+	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent|Delegates")
 	FOnTargetLocked OnTargetLocked;
 
-	/** Called when the Target is unlocked. */
-	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent")
+	/** Called if any Target has been successfully released. */
+	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent|Delegates")
 	FOnTargetUnlocked OnTargetUnlocked;
 
-	/** Called when the Socket is changed within the current Target, if it has more than 1. */
-	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent")
+	/** Called if the same Target with another Socket has been successfully captured. */
+	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent|Delegates")
 	FOnSocketChanged OnSocketChanged;
 	
-	/** Called if the Target isn't found after finding. */
-	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent")
+	/** Called if TargetHandler hasn't found any Target. */
+	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent|Delegates")
 	FOnTargetNotFound OnTargetNotFound;
 
-private:
-	//Information about the captured Target (TargetingHelperComponent and Socket).
+private: /** Internal */
+
+	//Information about the captured Target.
 	UPROPERTY(Transient, ReplicatedUsing = OnTargetInfoUpdated)
 	FTargetInfo CurrentTargetInternal;
 
@@ -111,199 +104,239 @@ private:
 	UPROPERTY(Transient, Replicated)
 	float TargetingDuration;
 
-	//Is any HelperComponent is captured.
+	//Is any Target captured.
 	bool bIsTargetLocked;
 
-public: /** UActorComponent overrides */
+protected: /** Input Internal */
 
-	virtual void BeginPlay() override;
-	virtual void EndPlay(EEndPlayReason::Type EndPlayReason) override;
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-
-public: /** Class Main Interface */
-
-	/** Main method of capturing and clearing a Target. */
-	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Player Input")
-	void EnableTargeting();
-
-	/** Feed Yaw input to the InputBuffer. */
-	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Player Input")
-	void SwitchTargetYaw(float YawAxis);
-
-	/** Feed Pitch input to the InputBuffer. */
-	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Player Input")
-	void SwitchTargetPitch(float PitchAxis);
-
-public: /** Manual Target handling */
-
-	/** Manual Target switching. Useful for custom input processing. */
-	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Manual Handling")
-	void SwitchTargetManual(FVector2D PlayerInput);
-
-	/** Manual Target capturing. Useful for custom input processing. */
-	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Manual Handling", meta = (AutoCreateRefTerm = "Socket"))
-	void SetLockOnTargetManual(AActor* NewTarget, FName Socket = NAME_None);
-
-	/** 
-	 * Manual Target clearing. Useful for custom input processing. 
-	 * If bAutoFindTarget is used then mark the current Target somehow as 'can't be targeted' otherwise it can be captured again.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Manual Handling")
-	void ClearTargetManual(bool bAutoFindNewTarget = false);
-
-private: /** Processing the Target */
-
-	//Performs to find the Target.
-	virtual void FindTarget(FVector2D OptionalInput = FVector2D(0.f));
-
-	//Used to reduce the number of reliable calls to the server.
-	void ProcessTargetHandlerResult(const FTargetInfo& TargetInfo);
-
-	//Can continue to capture the Target.
-	bool CanContinueTargeting();
-
-	//Updates the CurrentTargetInternal locally and sends it to the server.
-	void UpdateTargetInfo(const FTargetInfo& TargetInfo);
-
-	//Sets the desired Target on the server.
-	UFUNCTION(Server, Reliable /*, WithValidation */)
-	void Server_UpdateTargetInfo(const FTargetInfo& TargetInfo);
-
-	//Main method which controls the Target state.
-	UFUNCTION()
-	void OnTargetInfoUpdated(const FTargetInfo& OldTarget);
-	
-	void CaptureTarget(const FTargetInfo& Target);
-	void ReleaseTarget(const FTargetInfo& Target);
-
-	//Called to change the Target's socket (if the Target has > 1 socket).
-	virtual void UpdateTargetSocket(FName OldSocket);
-
-	virtual void OnTargetEndPlay(UTargetingHelperComponent* HelperComponent, EEndPlayReason::Type Reason);
-	virtual void OnTargetSocketRemoved(FName RemovedSocket);
-	
-private: /** Input processing */
-
+	bool bInputFrozen;
 	FTimerHandle InputProcessingDelayHandler;
 	FTimerHandle BufferResetHandler;
 	FVector2D InputBuffer;
 	FVector2D InputVector;
-	mutable bool bInputFrozen;
 
-	void ProcessAnalogInput(float DeltaInput);
+public: /** Polls */
+
+	/** Is any Target locked. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Polls")
+	bool IsTargetLocked() const { return bIsTargetLocked; }
+
+	/** Gets the currently locked TargetComponent, if exists, otherwise nullptr. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Polls")
+	UTargetComponent* GetTargetComponent() const { return IsTargetLocked() ? CurrentTargetInternal.TargetComponent : nullptr; }
+
+	/** Gets the captured socket, if exists, otherwise NAME_None. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Polls")
+	FName GetCapturedSocket() const { return IsTargetLocked() ? CurrentTargetInternal.Socket : NAME_None; }
+
+	/** Gets the currently locked AActor, if exists, otherwise nullptr. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Polls")
+	AActor* GetTargetActor() const;
+
+	/** Gets the targeting duration in seconds. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Polls")
+	float GetTargetingDuration() const { return TargetingDuration; }
+
+	/** Returns the World location of the captured Socket. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Polls")
+	FVector GetCapturedSocketLocation() const;
+
+	/** Returns the FocusPoint location of the Target. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Polls")
+	FVector GetCapturedFocusLocation() const;
+
+	/** Are we ready/able to capture Targets. Also checks for ownership and completeness of initialization. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Can Capture Target")
+	bool CanCaptureTarget() const;
+
+	/** Sets the new bCanCaptureTarget state. Clears the Target if necessary. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Can Capture Target")
+	void SetCanCaptureTarget(bool bInCanCaptureTarget);
+
+public: /** Class Main Interface */
+
+	/** Tries to find a new Target through the TargetHandler if there is no locked Target, otherwise clears it. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Player Input")
+	void EnableTargeting();
+
+	/** Feeds Yaw input to the InputBuffer. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Player Input")
+	void SwitchTargetYaw(float YawAxis);
+
+	/** Feeds Pitch input to the InputBuffer. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Player Input")
+	void SwitchTargetPitch(float PitchAxis);
+
+	/** Tries to capture the Target manually. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Manual Handling", meta = (DisplayName = "Set Lock On Target Manual (by AActor)", AutoCreateRefTerm = "Socket"))
+	void SetLockOnTargetManual(AActor* NewTarget, FName Socket = NAME_None);
+
+	/** Tries to capture the Target manually. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Manual Handling", meta = (DisplayName = "Set Lock On Target Manual (by FTargetInfo)"))
+	void SetLockOnTargetManualByInfo(const FTargetInfo& TargetInfo);
+
+	/** Clears the Target manually. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Manual Handling")
+	void ClearTargetManual();
+
+	/** Passes the input to the TargetHandler, which should handle it and try to find a new Target. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Manual Handling")
+	void SwitchTargetManual(FVector2D PlayerInput);
+
+protected: /** Target Handling */
+
+	//Performs to find a Target. Default implementation uses the TargetHandler.
+	//@Warning - Potential reliable server call. Use carefully without wrapper.
+	virtual void TryFindTarget(FVector2D OptionalInput = FVector2D(0.f));
+
+	//Processes the Target returned by the TargetHandler.
+	virtual void ProcessTargetHandlerResult(const FTargetInfo& TargetInfo);
+
+	//Checks the Target state. Usually between updates.
+	virtual void CheckTargetState(float DeltaTime);
+
+	//Only the locally controlled Owner can control the Target.
+	bool HasAuthorityOverTarget() const;
+
+public: /** Target Validation */
+
+	//Can the Target be captured.
+	bool CanTargetBeCaptured(const FTargetInfo& TargetInfo) const;
+
+	//Whether the target meets all the requirements for being captured.
+	bool IsTargetValid(const UTargetComponent* Target) const;
+
+protected: /** Target Synchronization */
+
+	//Updates the CurrentTargetInternal locally and sends it to the server.
+	void UpdateTargetInfo(const FTargetInfo& TargetInfo);
+
+	//Updates the Target on the server.
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_UpdateTargetInfo(const FTargetInfo& TargetInfo);
+	void Server_UpdateTargetInfo_Implementation(const FTargetInfo& TargetInfo);
+	bool Server_UpdateTargetInfo_Validate(const FTargetInfo& TargetInfo);
+
+private: /** Target State Workhorse */
+
+	UFUNCTION()
+	void OnTargetInfoUpdated(const FTargetInfo& OldTarget);
+	
+protected: /** System Callbacks */
+
+	//Reacts on Target capture.
+	virtual void OnTargetCaptured(const FTargetInfo& Target);
+	
+	//Reacts on Target release.
+	virtual void OnTargetReleased(const FTargetInfo& Target);
+
+	//Reacts on Socket change within the same Target.
+	virtual void OnTargetSocketChanged(FName OldSocket);
+
+public:
+
+	//Handles Target exception/interrupt messages.
+	virtual void ReceiveTargetException(ETargetExceptionType Exception);
+
+public: /** Overrides */
+
+	//UActorComponent
+	virtual void InitializeComponent() override;
+	virtual void EndPlay(EEndPlayReason::Type EndPlayReason) override;
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+protected: /** Input */
+
+	virtual void ProcessAnalogInput(float DeltaInput);
 	bool IsInputDelayActive() const;
 	void ActivateInputDelay();
-	bool CanInputBeProcessed(float PlayerInput) const;
+	bool CanInputBeProcessed();
 	void ClearInputBuffer();
+
+public: /** TargetHandler */
+
+	/** Gets the current TargetHandler. */
+	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Target Handler")
+	UTargetHandlerBase* GetTargetHandler() const { return TargetHandlerImplementation; }
+
+	/** Creates and returns a new TargetHandler from class. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Target Handler", meta = (DeterminesOutputType = TargetHandlerClass))
+	UTargetHandlerBase* SetTargetHandlerByClass(TSubclassOf<UTargetHandlerBase> TargetHandlerClass);
+
+	template<typename Class>
+	Class* SetTargetHandlerByClass()
+	{
+		static_assert(TPointerIsConvertibleFromTo<Class, const UTargetHandlerBase>::Value, "Invalid template param.");
+		return static_cast<Class*>(SetTargetHandlerByClass(Class::StaticClass()));
+	}
+
+	/** Destroys TargetHandler. */
+	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Target Handler")
+	void ClearTargetHandler();
 
 public: /** Modules */
 
-	/** Get all modules associated with the component. */
+	/** Gets all modules. */
 	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Modules")
-	const TArray<ULockOnTargetModuleBase*>& GetAllModules() const;
+	const TArray<ULockOnTargetModuleBase*>& GetAllModules() const { return Modules; }
 
-	/** Find a module by class. Complexity O(n). */
+	/** Finds a module by class. Complexity O(n). */
 	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Modules", meta = (DeterminesOutputType = ModuleClass))
 	ULockOnTargetModuleBase* FindModuleByClass(TSubclassOf<ULockOnTargetModuleBase> ModuleClass) const;
 
 	template<typename Class>
-	typename TEnableIf<TIsModule_V<Class>, Class>::Type* FindModuleByClass()
+	Class* FindModuleByClass() const
 	{
+		static_assert(TPointerIsConvertibleFromTo<Class, const ULockOnTargetModuleBase>::Value, "Invalid template param.");
 		return static_cast<Class*>(FindModuleByClass(Class::StaticClass()));
 	}
 
-	/** Create and Initialize a new Module. Complexity amortized constant. */
+	/** Creates and returns a new module by class. Complexity amortized constant. */
 	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Modules", meta = (DeterminesOutputType = ModuleClass))
 	ULockOnTargetModuleBase* AddModuleByClass(TSubclassOf<ULockOnTargetModuleBase> ModuleClass);
 
 	template<typename Class>
-	typename TEnableIf<TIsModule_V<Class>, Class>::Type* AddModuleByClass()
+	Class* AddModuleByClass()
 	{
+		static_assert(TPointerIsConvertibleFromTo<Class, const ULockOnTargetModuleBase>::Value, "Invalid template param.");
 		return static_cast<Class*>(AddModuleByClass(Class::StaticClass()));
 	}
 
-	/** Deinitialize and Destroy a module by class. Complexity O(n). */
+	/** Destroys a module by class. Complexity O(n). */
 	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Modules")
 	bool RemoveModuleByClass(TSubclassOf<ULockOnTargetModuleBase> ModuleClass);
 
 	template<typename Class>
-	typename TEnableIf<TIsModule_V<Class>, bool>::Type RemoveModuleByClass()
+	void RemoveModuleByClass()
 	{
+		static_assert(TPointerIsConvertibleFromTo<Class, const ULockOnTargetModuleBase>::Value, "Invalid template param.");
 		return RemoveModuleByClass(Class::StaticClass());
 	}
 
-	/** Deinitialize and Destroy all modules. Complexity O(n). */
+	/** Destroys all modules. Complexity O(n). */
 	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Modules")
 	void RemoveAllModules();
 
-private:
-	void UpdateModules(float DeltaTime);
-	
-public: /** Misc */
+private: /** Subobject General. */
 
-	/** Set the CanCaptureTarget state. If set to false while locked then will unlock the Target. */
-	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent")
-	void SetCanCaptureTarget(bool bInCanCaptureTarget);
+	void InitializeSubobject(ULockOnTargetModuleProxy* Subobject);
+	void DestroySubobject(ULockOnTargetModuleProxy* Subobject);
 
-	/** Can capture any Target. */
-	bool GetCanCaptureTarget() const { return bCanCaptureTarget; };
-
-	/** Set a new TargetHandler by ref. */
-	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent")
-	void SetTargetHandler(UTargetHandlerBase* NewTargetHandler);
-
-	/** Get current TargetHandler implementation. */
-	UTargetHandlerBase* GetTargetHandler() const { return TargetHandlerImplementation; }
-
-	/** Create, assign and return (for setup purposes) a new TargetHandler from class. */
-	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent", meta = (DeterminesOutputType = TargetHandlerClass))
-	UTargetHandlerBase* SetTargetHandlerByClass(TSubclassOf<UTargetHandlerBase> TargetHandlerClass);
-
-	template<typename Class>
-	typename TEnableIf<TIsModule_V<Class>, Class>::Type* SetTargetHandlerByClass()
+	template<typename Func>
+	void ForEachSubobject(Func InFunc)
 	{
-		SetTargetHandlerByClass(Class::StaticClass());
+		if (IsValid(GetTargetHandler()))
+		{
+			InFunc(GetTargetHandler());
+		}
+
+		for (auto& Module : Modules)
+		{
+			if (IsValid(Module))
+			{
+				InFunc(Module);
+			}
+		}
 	}
-
-	/** Is any Target locked. */
-	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
-	bool IsTargetLocked() const { return bIsTargetLocked; };
-
-	/** Current locked Target's TargetingHelperComponent. */
-	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
-	UTargetingHelperComponent* GetHelperComponent() const;
-
-	/** Captured socket, if exists. NAME_None otherwise. */
-	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
-	FName GetCapturedSocket() const;
-
-	/** Currently locked Actor. */
-	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
-	AActor* GetTarget() const;
-
-	/** Targeting duration in sec. */
-	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
-	float GetTargetingDuration() const { return TargetingDuration; }
-
-	/** World location of the locked Target's socket. */
-	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
-	FVector GetCapturedSocketLocation() const;
-
-	/** World location of the locked Target's socket with offset. */
-	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent")
-	FVector GetCapturedFocusLocation() const;
-
-public: /** Internal Misc */
-
-	AController* GetController() const;
-	bool IsLocallyControlled() const;
-	APlayerController* GetPlayerController() const;
-	FRotator GetOwnerRotation() const;
-	FVector GetOwnerLocation() const;
-	FRotator GetCameraRotation() const;
-	FVector GetCameraLocation() const;
-	FVector GetCameraUpVector() const;
-	FVector GetCameraForwardVector() const;
-	FVector GetCameraRightVector() const;
 };
