@@ -585,13 +585,14 @@ void ULockOnTargetComponent::ProcessAnalogInput(float DeltaTime)
 
 	//@TODO: If the Target is unlocked while the Input is frozen, then it'll be frozen until the new Target is captured.
 
-	//If you want to have an ability to unfreeze input while delay is active then change the order in the if statement below.
-	if (IsInputDelayActive() || !CanInputBeProcessed())
+	const FVector2D ConsumedInput = ConsumeInput();
+
+	if (IsInputDelayActive() || !CanInputBeProcessed(ConsumedInput))
 	{
 		return;
 	}
 
-	InputBuffer += InputVector.ClampAxes(ClampInputVector.X, ClampInputVector.Y) * DeltaTime;
+	InputBuffer += ConsumedInput.ClampAxes(ClampInputVector.X, ClampInputVector.Y) * DeltaTime;
 
 	if (InputBuffer.SizeSquared() > FMath::Square(InputBufferThreshold))
 	{
@@ -609,16 +610,23 @@ void ULockOnTargetComponent::ProcessAnalogInput(float DeltaTime)
 	}
 }
 
-bool ULockOnTargetComponent::CanInputBeProcessed()
+FVector2D ULockOnTargetComponent::ConsumeInput()
 {
-	const float SquaredInput = InputVector.SizeSquared();
+	FVector2D Consumed{ InputVector };
+	InputVector = FVector2D::ZeroVector;
+	return Consumed;
+}
+
+bool ULockOnTargetComponent::CanInputBeProcessed(FVector2D Input)
+{
+	const float InputSq = Input.SizeSquared();
 
 	if (bInputFrozen)
 	{
-		bInputFrozen = SquaredInput > FMath::Square(UnfreezeThreshold);
+		bInputFrozen = InputSq > FMath::Square(UnfreezeThreshold);
 	}
 
-	return SquaredInput > 0.f && !bInputFrozen;
+	return InputSq > 0.f && !bInputFrozen;
 }
 
 void ULockOnTargetComponent::ClearInputBuffer()

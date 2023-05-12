@@ -184,7 +184,7 @@ public:
 
 	UThirdPersonTargetHandler();
 	friend class FGDC_LockOnTarget; //Gameplay Debugger.
-	static_assert(TIsSame<std::underlying_type_t<EUnlockReason>, uint8>::Value, "UThirdPersonTargetHandler::AutoFindTargetFlags must be of the same type as the EUnlockReason underlying type.");
+	static_assert(std::is_same_v<std::underlying_type_t<EUnlockReason>, uint8>, "UThirdPersonTargetHandler::AutoFindTargetFlags must be of the same type as the EUnlockReason underlying type.");
 	using FTargetModifier = TPair<FTargetInfo, float>; //Holds a modifier associated with the Target.
 
 public: /** Auto Find */

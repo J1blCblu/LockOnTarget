@@ -249,9 +249,10 @@ public: /** Overrides */
 protected: /** Input */
 
 	virtual void ProcessAnalogInput(float DeltaInput);
+	FVector2D ConsumeInput();
 	bool IsInputDelayActive() const;
 	void ActivateInputDelay();
-	bool CanInputBeProcessed();
+	bool CanInputBeProcessed(FVector2D Input);
 	void ClearInputBuffer();
 
 public: /** TargetHandler */

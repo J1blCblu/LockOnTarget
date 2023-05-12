@@ -142,7 +142,7 @@ bool UControllerRotationModule::CanInterpolate(float DeltaAngle) const
 {
 	if (bInterpolationInProgress)
 	{
-		if (DeltaAngle <= FMath::Max(BeginInterpAngle - StopInterpOffset, 0.5f))
+		if (DeltaAngle <= FMath::Max(BeginInterpAngle - StopInterpOffset, 0.f))
 		{
 			bInterpolationInProgress = false;
 		}
