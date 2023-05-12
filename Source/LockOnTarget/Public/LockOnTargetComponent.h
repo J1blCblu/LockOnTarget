@@ -18,6 +18,7 @@ DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_TwoParams(FOnTargetLocked, ULockOnTarg
 DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_TwoParams(FOnTargetUnlocked, ULockOnTargetComponent, OnTargetUnlocked, class UTargetComponent*, UnlockedTarget, FName, Socket);
 DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_ThreeParams(FOnSocketChanged, ULockOnTargetComponent, OnSocketChanged, class UTargetComponent*, CurrentTarget, FName, NewSocket, FName, OldSocket);
 DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE(FOnTargetNotFound, ULockOnTargetComponent, OnTargetNotFound);
+DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE(FOnTargetNotFoundOnEnabling, ULockOnTargetComponent, OnTargetNotFoundOnEnabling);
 
 /**
  *	LockOnTargetComponent gives the locally controlled AActor the ability to find and store the Target along with the Socket.
@@ -93,6 +94,10 @@ public: /** Callbacks */
 	/** Called if TargetHandler hasn't found any Target. */
 	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent|Delegates")
 	FOnTargetNotFound OnTargetNotFound;
+	
+	/** Called if TargetHandler hasn't found any Target when no target was locked. */
+	UPROPERTY(BlueprintAssignable, Category = "LockOnTargetComponent|Delegates")
+    FOnTargetNotFoundOnEnabling OnTargetNotFoundOnEnabling;
 
 private: /** Internal */
 

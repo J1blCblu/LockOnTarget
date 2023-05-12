@@ -181,8 +181,14 @@ void ULockOnTargetComponent::ProcessTargetHandlerResult(const FTargetInfo& Targe
 	else
 	{
 		LOT_BOOKMARK("TargetNotFound");
-
-		OnTargetNotFound.Broadcast();
+        if (IsTargetLocked())
+        {
+			OnTargetNotFound.Broadcast();
+        }
+        else
+        {
+            OnTargetNotFoundOnEnabling.Broadcast();
+		}
 	}
 }
 
