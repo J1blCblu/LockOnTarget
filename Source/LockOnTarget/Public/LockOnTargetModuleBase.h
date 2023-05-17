@@ -62,7 +62,7 @@ protected: /** Module Interface */
 	virtual void OnTargetLocked(UTargetComponent* Target, FName Socket);
 	virtual void OnTargetUnlocked(UTargetComponent* UnlockedTarget, FName Socket);
 	virtual void OnSocketChanged(UTargetComponent* CurrentTarget, FName NewSocket, FName OldSocket);
-	virtual void OnTargetNotFound();
+	virtual void OnTargetNotFound(bool bIsTargetLocked);
 
 private: /** Internal */
 
@@ -97,7 +97,7 @@ protected: /** BP */
 
 	/** Called when the owning LockOnTargetComponent didn't find the Target. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Module Base", DisplayName = "On Target Not Found")
-	void K2_OnTargetNotFound();
+	void K2_OnTargetNotFound(bool bIsTargetLocked);
 
 	/** Basic tick method. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Module Base", DisplayName = "Update")

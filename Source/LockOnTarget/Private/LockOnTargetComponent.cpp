@@ -7,6 +7,7 @@
 #include "LockOnTargetModuleBase.h"
 
 #include "Net/UnrealNetwork.h"
+#include "Net/Core/PushModel/PushModel.h"
 #include "TimerManager.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -182,7 +183,12 @@ void ULockOnTargetComponent::ProcessTargetHandlerResult(const FTargetInfo& Targe
 	{
 		LOT_BOOKMARK("TargetNotFound");
 
-		OnTargetNotFound.Broadcast();
+		ForEachSubobject([this](ULockOnTargetModuleProxy* Module)
+			{
+				Module->OnTargetNotFound(IsTargetLocked());
+			});
+
+		OnTargetNotFound.Broadcast(IsTargetLocked());
 	}
 }
 
@@ -612,7 +618,7 @@ void ULockOnTargetComponent::ProcessAnalogInput(float DeltaTime)
 
 FVector2D ULockOnTargetComponent::ConsumeInput()
 {
-	FVector2D Consumed{ InputVector };
+	const FVector2D Consumed{ InputVector };
 	InputVector = FVector2D::ZeroVector;
 	return Consumed;
 }

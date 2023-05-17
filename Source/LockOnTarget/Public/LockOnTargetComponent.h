@@ -17,7 +17,7 @@ class ULockOnTargetModuleProxy;
 DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_TwoParams(FOnTargetLocked, ULockOnTargetComponent, OnTargetLocked, class UTargetComponent*, Target, FName, Socket);
 DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_TwoParams(FOnTargetUnlocked, ULockOnTargetComponent, OnTargetUnlocked, class UTargetComponent*, UnlockedTarget, FName, Socket);
 DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_ThreeParams(FOnSocketChanged, ULockOnTargetComponent, OnSocketChanged, class UTargetComponent*, CurrentTarget, FName, NewSocket, FName, OldSocket);
-DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE(FOnTargetNotFound, ULockOnTargetComponent, OnTargetNotFound);
+DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_OneParam(FOnTargetNotFound, ULockOnTargetComponent, OnTargetNotFound, bool, bIsTargetLocked);
 
 /**
  *	LockOnTargetComponent gives the locally controlled AActor the ability to find and store the Target along with the Socket.
