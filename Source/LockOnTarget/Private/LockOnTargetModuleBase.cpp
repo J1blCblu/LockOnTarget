@@ -90,9 +90,9 @@ void ULockOnTargetModuleProxy::OnSocketChanged(UTargetComponent* CurrentTarget, 
 	K2_OnSocketChanged(CurrentTarget, NewSocket, OldSocket);
 }
 
-void ULockOnTargetModuleProxy::OnTargetNotFound()
+void ULockOnTargetModuleProxy::OnTargetNotFound(bool bIsTargetLocked)
 {
-	K2_OnTargetNotFound();
+	K2_OnTargetNotFound(bIsTargetLocked);
 }
 
 void ULockOnTargetModuleProxy::Update(float DeltaTime)
