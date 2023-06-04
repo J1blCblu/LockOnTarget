@@ -241,7 +241,7 @@ public:
 public: /** Overrides */
 
 	//UActorComponent
-	virtual void InitializeComponent() override;
+	virtual void BeginPlay() override;
 	virtual void EndPlay(EEndPlayReason::Type EndPlayReason) override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -323,21 +323,14 @@ private: /** Subobject General. */
 
 	void InitializeSubobject(ULockOnTargetModuleProxy* Subobject);
 	void DestroySubobject(ULockOnTargetModuleProxy* Subobject);
+	TArray<ULockOnTargetModuleProxy*, TInlineAllocator<8>> GetAllSubobjects() const;
 
 	template<typename Func>
 	void ForEachSubobject(Func InFunc)
 	{
-		if (IsValid(GetTargetHandler()))
+		for (auto* const Subobject : GetAllSubobjects())
 		{
-			InFunc(GetTargetHandler());
-		}
-
-		for (auto& Module : Modules)
-		{
-			if (IsValid(Module))
-			{
-				InFunc(Module);
-			}
+			InFunc(Subobject);
 		}
 	}
 };

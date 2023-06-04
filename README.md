@@ -1,44 +1,52 @@
 # LockOnTarget
-Fast and Efficient plugin for Unreal Engine which gives the ability to capture the Target and follow it.  
-The system consist of 2 components which can be extendent and customized in different ways via C++/BP.
 
-### **LockOnTargetComponent**
-LockOnTargetComponent gives the Owner(Player) an ability to find a Target and store it. Wraps next systems:
- *	Target storage (*TargetingHelperComponent* and *Socket*). Synchronized with the server.
- *	Processing the input. Processed locally.
- *	**TargetHandler** subobject - used for Target handling (find, maintenance). Processed locally.
- *  **Modules** - piece of functionality that can be dynamically added/removed.
+Fast and efficient plugin for Unreal Engine which gives the ability to find and capture the Target, synchronizing it with the server. The system consist of 2 components which can be extended and customized.
 
-### **TargetingHelperComponent**
-Represents the Target that the *LockOnTargetComponent* can capture in addition to a specified *Socket*. Has all component's benefits and acts like a Target specific storage.
+* [**LockOnTargetComponent**](https://github.com/J1blCblu/LockOnTarget/wiki/2.-LockOnTargetComponent-Overview) - gives the locally controlled AActor the ability to find and store the Target along with the Socket. The Target can be controlled directly by the component or through an optional [TargetHandler](https://github.com/J1blCblu/LockOnTarget/wiki/2.2-Third-Person-Target-Handler). The component may contain a set of optional **Modules**, which can be used to add custom cosmetic features.
+
+* [**TargetComponent**](https://github.com/J1blCblu/LockOnTarget/wiki/3.-TargetComponent-Overview) - Represents a Target that *LockOnTargetComponent* can capture in conjunction with a Socket. It is kind of a dumping ground for anything LockOnTarget subsystems may need.
+
 
 # Features
 
- * Capture *any Actor* with a *TargetingHelperComponent* which can be removed and added at runtime.
- * Target can have **multiple** sockets, which can be added/removed at runtime.
- * Network synchronization.
- * Line of Sight handling.
- * Custom *Widget* for each Target.
- * Switch to a new Target in any direction (in screen space).
- * Flexible input processing settings.
- * Multiple settings for Target capturing.
- * Various **rotation modes**.
- * Several useful methods and delegates for LockOnTargetComponent and TargetingHelperComponent Owners.
- * Custom rules for capturing the target (e.g. not capturing teammates).
- * Built-in modules by default (CameraZoom, Widget, Control/OwnerRotation).
+* Capture *any Actor* with a TargetComponent, which can be removed/added at runtime.
+* Target can have multiple Sockets, which can be added/removed at runtime.
+* Network synchronization.
+* Custom Widget for each Target.
+* Flexible input processing settings.
+* Several useful methods and delegates.
+* Target sorting to find the best one.
+* Line of Sight check.
+* Distance check.
+* Auto find a new Target.
+* Target switching.
+* [Debugger](https://github.com/J1blCblu/LockOnTarget/wiki/4.-Gameplay-Debugger-Overview).
 
-### **Network Design Philosophy**
-**Lock On Target** is just a system which finds a Target, stores and synchronizes it over the network. Finding the Target is not a quick operation to process it on the server for each player. Due to this and network relevancy opportunities (not relevant Target doesn't exist in the world) finding the Target processed **locally on the owning client.**  
+
+# Installation
+
+* **Source** - Clone the [repository](https://github.com/J1blCblu/LockOnTarget) to the `Plugins` folder of the project.
+Optionally add the **LockOnTarget** dependency to your build.cs file. Generate project files and build the project.
+
+* **Unreal Marketplace** - Download from the [Marketplace](https://www.unrealengine.com/marketplace/en-US/product/lock-on-target) and `install` on a specific Engine version. `Enable` the plugin in the editor.
+
 
 # Documentation
-[Instructions](https://github.com/J1blCblu/LockOnTarget/wiki) for setting up the plugin.
+
+* [Initial setup](https://github.com/J1blCblu/LockOnTarget/wiki/1.-Initial-Setup).
+* [Updates](https://github.com/J1blCblu/LockOnTarget/releases).
+
 
 # Known Issues
+
 List of known [Issues](https://github.com/J1blCblu/LockOnTarget/issues).
 
+
 # Special Thanks
- * To [mklabs](https://github.com/mklabs). His delightful [Targeting System](https://github.com/mklabs/ue4-targetsystemplugin) plugin was the starting point.
+
+ * To [mklabs](https://github.com/mklabs). His great [Targeting System](https://github.com/mklabs/ue4-targetsystemplugin) plugin was the starting point.
+
 
 # License
-Source code of the plugin is licensed under MIT license, and other developers are encouraged to fork the repository,  \
-open issues & pull requests to help the development.
+
+Source code of the plugin is licensed under MIT license, and other developers are encouraged to fork the repository, open issues & pull requests to help the development.
