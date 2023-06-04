@@ -43,7 +43,7 @@ constexpr EUnlockReason ConvertTargetExceptionToUnlockReason(ETargetExceptionTyp
 	case ETargetExceptionType::Destruction:			return EUnlockReason::Destruction;
 	case ETargetExceptionType::StateInvalidation:	return EUnlockReason::StateInvalidation;
 	case ETargetExceptionType::SocketInvalidation:	return EUnlockReason::SocketInvalidation;
-	default: checkNoEntry();						return EUnlockReason::None;
+	default:										return EUnlockReason::None;
 	}
 }
 

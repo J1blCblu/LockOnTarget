@@ -23,7 +23,7 @@ void UWidgetModule::Initialize(ULockOnTargetComponent* Instigator)
 {
 	Super::Initialize(Instigator);
 
-	if (Widget = NewObject<UWidgetComponent>(this, MakeUniqueObjectName(this, UWidgetComponent::StaticClass(), TEXT("LockOnTarget_Target_Widget")), RF_Transient))
+	if ((Widget = NewObject<UWidgetComponent>(this, MakeUniqueObjectName(this, UWidgetComponent::StaticClass(), TEXT("LockOnTarget_Target_Widget")), RF_Transient)))
 	{
 		Widget->RegisterComponent();
 		Widget->SetWidgetSpace(EWidgetSpace::Screen);

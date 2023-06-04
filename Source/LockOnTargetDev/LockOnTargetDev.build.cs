@@ -12,13 +12,14 @@ public class LockOnTargetDev : ModuleRules
             new string[]
             {
                 "LockOnTarget",
-                "GameplayDebugger",
                 "Core",
                 "CoreUObject",
                 "Engine",
                 "InputCore",
-                
+
             }
             );
+
+        SetupGameplayDebuggerSupport(Target);
     }
 }

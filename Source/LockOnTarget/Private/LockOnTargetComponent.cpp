@@ -39,30 +39,24 @@ ULockOnTargetComponent::ULockOnTargetComponent()
 	//TargetHandlerImplementation = CreateDefaultSubobject<UThirdPersonTargetHandler>(TEXT("TargetHandler"));
 }
 
-void ULockOnTargetComponent::InitializeComponent()
+void ULockOnTargetComponent::BeginPlay()
 {
-	Super::InitializeComponent();
+	Super::BeginPlay();
 
-	if (const UWorld* const World = GetWorld())
+	InitializeSubobject(GetTargetHandler());
+
+	//Reverse loop to remove invalid modules.
+	for (int32 i = Modules.Num() - 1; i >= 0; --i)
 	{
-		if (World->WorldType == EWorldType::Game || World->WorldType == EWorldType::PIE)
+		ULockOnTargetModuleBase* const Module = Modules[i];
+
+		if (IsValid(Module))
 		{
-			InitializeSubobject(GetTargetHandler());
-
-			//Reverse loop to remove invalid modules.
-			for (int32 i = Modules.Num() - 1; i >= 0; --i)
-			{
-				ULockOnTargetModuleBase* const Module = Modules[i];
-
-				if (IsValid(Module))
-				{
-					InitializeSubobject(Module);
-				}
-				else
-				{
-					Modules.RemoveAtSwap(i);
-				}
-			}
+			InitializeSubobject(Module);
+		}
+		else
+		{
+			Modules.RemoveAtSwap(i);
 		}
 	}
 }
@@ -144,7 +138,7 @@ void ULockOnTargetComponent::EnableTargeting()
 		//Prevents reliable buffer overflow.
 		ActivateInputDelay();
 
-		if(IsTargetLocked())
+		if (IsTargetLocked())
 		{
 			ClearTargetManual();
 		}
@@ -429,7 +423,7 @@ void ULockOnTargetComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	{
 		TargetingDuration += DeltaTime;
 
-		if(HasAuthorityOverTarget())
+		if (HasAuthorityOverTarget())
 		{
 			ProcessAnalogInput(DeltaTime);
 			CheckTargetState(DeltaTime);
@@ -448,7 +442,7 @@ void ULockOnTargetComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
 void ULockOnTargetComponent::InitializeSubobject(ULockOnTargetModuleProxy* Subobject)
 {
-	if (IsValid(Subobject) && HasBeenInitialized())
+	if (IsValid(Subobject) && HasBegunPlay())
 	{
 		Subobject->Initialize(this);
 
@@ -476,6 +470,26 @@ void ULockOnTargetComponent::DestroySubobject(ULockOnTargetModuleProxy* Subobjec
 
 		Subobject->MarkAsGarbage();
 	}
+}
+
+TArray<ULockOnTargetModuleProxy*, TInlineAllocator<8>> ULockOnTargetComponent::GetAllSubobjects() const
+{
+	TArray<ULockOnTargetModuleProxy*, TInlineAllocator<8>> Subobjects;
+
+	if (IsValid(GetTargetHandler()))
+	{
+		Subobjects.Add(GetTargetHandler());
+	}
+
+	for (auto& Module : Modules)
+	{
+		if (IsValid(Module))
+		{
+			Subobjects.Add(Module);
+		}
+	}
+
+	return Subobjects;
 }
 
 UTargetHandlerBase* ULockOnTargetComponent::SetTargetHandlerByClass(TSubclassOf<UTargetHandlerBase> TargetHandlerClass)
