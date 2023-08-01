@@ -10,7 +10,7 @@
 
 #include "LockOnComponentDetails.h"
 #include "TargetComponentDetails.h"
-#include "Editor/UnrealEdEngine.h"
+#include "PropertyEditorModule.h"
 
 DEFINE_LOG_CATEGORY(LogLockOnTargetEditor);
 

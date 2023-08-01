@@ -13,7 +13,7 @@ void FLockOnTargetDevModule::StartupModule()
 {
 #if WITH_GAMEPLAY_DEBUGGER
 	IGameplayDebugger& GDModule = IGameplayDebugger::Get();
-	GDModule.RegisterCategory(TEXT("LockOnTarget"), IGameplayDebugger::FOnGetCategory::CreateStatic(&FGDC_LockOnTarget::MakeInstance), EGameplayDebuggerCategoryState::EnabledInGame);
+	GDModule.RegisterCategory(TEXT("LockOnTarget"), IGameplayDebugger::FOnGetCategory::CreateStatic(&FGDC_LockOnTarget::MakeInstance), EGameplayDebuggerCategoryState::Disabled);
 	GDModule.NotifyCategoriesChanged();
 #endif //WITH_GAMEPLAY_DEBUGGER
 }
