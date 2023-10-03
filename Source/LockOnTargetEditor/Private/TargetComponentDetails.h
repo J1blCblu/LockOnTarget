@@ -7,6 +7,7 @@
 #include "Types/SlateEnums.h"
 #include "UObject/WeakObjectPtr.h"
 
+class USceneComponent;
 class UTargetComponent;
 class IDetailLayoutBuilder;
 class IDetailChildrenBuilder;
