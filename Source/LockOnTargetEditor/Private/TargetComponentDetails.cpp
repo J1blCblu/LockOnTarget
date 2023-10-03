@@ -44,7 +44,7 @@ void FTargetComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayou
 	 * Default Category
 	 ***********************/
 
-	IDetailCategoryBuilder& DefaultCategoryBuilder = DetailLayout.EditCategory(TEXT("Default Settings"), FText::GetEmpty(), ECategoryPriority::Important);
+	IDetailCategoryBuilder& DefaultCategoryBuilder = DetailLayout.EditCategory(TEXT("General"), FText::GetEmpty(), ECategoryPriority::Important);
 
 	//CanBeCaptured
 	{
@@ -53,16 +53,16 @@ void FTargetComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayou
 
 	//TrackedMeshName
 	{
-		MeshPropertyHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UTargetComponent, TrackedMeshName));
+		AssociatedComponentNamePropertyHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UTargetComponent, AssociatedComponentName));
 
-		if (MeshPropertyHandle->IsValidHandle())
+		if (AssociatedComponentNamePropertyHandle->IsValidHandle())
 		{
-			MeshPropertyHandle->SetOnPropertyValueChanged(FSimpleDelegate::CreateSP(this, &FTargetComponentDetails::UpdateMeshPropertyText));
+			AssociatedComponentNamePropertyHandle->SetOnPropertyValueChanged(FSimpleDelegate::CreateSP(this, &FTargetComponentDetails::UpdateAssociatedComponentNameText));
 
-			DefaultCategoryBuilder.AddProperty(MeshPropertyHandle).CustomWidget()
+			DefaultCategoryBuilder.AddProperty(AssociatedComponentNamePropertyHandle).CustomWidget()
 				.NameContent()
 				[
-					MeshPropertyHandle->CreatePropertyNameWidget()
+					AssociatedComponentNamePropertyHandle->CreatePropertyNameWidget()
 				]
 				.ValueContent()
 				[
@@ -74,13 +74,13 @@ void FTargetComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayou
 					.VAlign(VAlign_Center)
 					.ButtonContent()
 					[
-						SAssignNew(MeshTextBox, SEditableTextBox)
+						SAssignNew(AssociatedComponentNameTextBox, SEditableTextBox)
 						.Font(FAppStyle::GetFontStyle(TEXT("PropertyWindow.NormalFont")))
-						.OnTextCommitted(this, &FTargetComponentDetails::OnCommitMeshText)
+						.OnTextCommitted(this, &FTargetComponentDetails::OnCommitAssociatedComponentNameText)
 					]
 				];
 
-			UpdateMeshPropertyText();
+			UpdateAssociatedComponentNameText();
 		}
 	}
 
@@ -90,7 +90,7 @@ void FTargetComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayou
 
 		if (SocketsPropertyHandle->IsValidHandle())
 		{
-			auto DetailArrayBuilder = MakeShared<FDetailArrayBuilder>(SocketsPropertyHandle.ToSharedRef());
+			auto DetailArrayBuilder = MakeShared<FDetailArrayBuilder>(SocketsPropertyHandle.ToSharedRef(), true, false);
 			DetailArrayBuilder->OnGenerateArrayElementWidget(FOnGenerateArrayElementWidget::CreateSP(this, &FTargetComponentDetails::GenerateArrayElementWidget));
 			DefaultCategoryBuilder.AddCustomBuilder(DetailArrayBuilder);
 		}
@@ -104,7 +104,7 @@ void FTargetComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayou
 
 	//Focus Point
 	{
-		FocusPointDetailBuilder.AddProperty(DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UTargetComponent, FocusPoint)));
+		FocusPointDetailBuilder.AddProperty(DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UTargetComponent, FocusPointType)));
 	}
 
 	//FocusPointCustomSocket
@@ -122,24 +122,24 @@ void FTargetComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayou
 				[
 					SNew(SSocketSelector)
 					.PropertyHandle(CustomSocketPropertyHandle)
-					.SceneComponent(this, &FTargetComponentDetails::GetTrackedMeshComponent)
+					.SceneComponent(this, &FTargetComponentDetails::GetAssociatedComponent)
 				];
 		}
 	}
 
 	//Focus Point
 	{
-		FocusPointDetailBuilder.AddProperty(DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UTargetComponent, FocusPointOffset)));
+		FocusPointDetailBuilder.AddProperty(DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UTargetComponent, FocusPointRelativeOffset)));
 	}
 }
 
-FName FTargetComponentDetails::GetTrackedMeshName() const
+FName FTargetComponentDetails::GetAssociatedComponentName() const
 {
 	FName MeshName = NAME_None;
 
-	if (MeshPropertyHandle->IsValidHandle())
+	if (AssociatedComponentNamePropertyHandle->IsValidHandle())
 	{
-		MeshPropertyHandle->GetValue(MeshName);
+		AssociatedComponentNamePropertyHandle->GetValue(MeshName);
 	}
 
 	return MeshName;
@@ -171,13 +171,13 @@ AActor* FTargetComponentDetails::GetComponentEditorOwner() const
 	return Owner;
 }
 
-USceneComponent* FTargetComponentDetails::GetTrackedMeshComponent() const
+USceneComponent* FTargetComponentDetails::GetAssociatedComponent() const
 {
 	USceneComponent* Component = nullptr;
 	
 	if (AActor* const Owner = GetComponentEditorOwner())
 	{
-		Component = FindComponentByName<UMeshComponent>(GetComponentEditorOwner(), GetTrackedMeshName());
+		Component = FindComponentByName<UMeshComponent>(GetComponentEditorOwner(), GetAssociatedComponentName());
 
 		if (!Component)
 		{
@@ -188,24 +188,24 @@ USceneComponent* FTargetComponentDetails::GetTrackedMeshComponent() const
 	return Component;
 }
 
-void FTargetComponentDetails::UpdateMeshPropertyText()
+void FTargetComponentDetails::UpdateAssociatedComponentNameText()
 {
-	OnCommitMeshEntry(GetTrackedMeshName());
+	OnCommitAssociatedComponentNameEntry(GetAssociatedComponentName());
 }
 
-void FTargetComponentDetails::OnCommitMeshEntry(FName MeshName)
+void FTargetComponentDetails::OnCommitAssociatedComponentNameEntry(FName MeshName)
 {
-	if (MeshPropertyHandle->IsValidHandle())
+	if (AssociatedComponentNamePropertyHandle->IsValidHandle())
 	{
-		MeshPropertyHandle->SetValue(MeshName);
+		AssociatedComponentNamePropertyHandle->SetValue(MeshName);
 	}
 
-	MeshTextBox->SetText(FText::FromName(MeshName));
+	AssociatedComponentNameTextBox->SetText(FText::FromName(MeshName));
 }
 
-void FTargetComponentDetails::OnCommitMeshText(const FText& ItemText, ETextCommit::Type CommitInfo)
+void FTargetComponentDetails::OnCommitAssociatedComponentNameText(const FText& ItemText, ETextCommit::Type CommitInfo)
 {
-	OnCommitMeshEntry(FName(ItemText.ToString()));
+	OnCommitAssociatedComponentNameEntry(FName(ItemText.ToString()));
 }
 
 TSharedRef<SWidget> FTargetComponentDetails::OnGetMeshContent()
@@ -214,7 +214,7 @@ TSharedRef<SWidget> FTargetComponentDetails::OnGetMeshContent()
 
 	//Root component
 	{
-		const FUIAction Action(FExecuteAction::CreateSP(this, &FTargetComponentDetails::OnCommitMeshEntry, FName(NAME_None)));
+		const FUIAction Action(FExecuteAction::CreateSP(this, &FTargetComponentDetails::OnCommitAssociatedComponentNameEntry, FName(NAME_None)));
 		MenuBuilder.AddMenuEntry(FText::FromString(TEXT("None (Root)")), FText::GetEmpty(), FSlateIconFinder::FindIconForClass(ACharacter::StaticClass()), Action);
 	}
 
@@ -227,7 +227,7 @@ TSharedRef<SWidget> FTargetComponentDetails::OnGetMeshContent()
 		{
 			if (Component && !Component->IsEditorOnly())
 			{
-				const FUIAction Action(FExecuteAction::CreateSP(this, &FTargetComponentDetails::OnCommitMeshEntry, Component->GetFName()));
+				const FUIAction Action(FExecuteAction::CreateSP(this, &FTargetComponentDetails::OnCommitAssociatedComponentNameEntry, Component->GetFName()));
 				MenuBuilder.AddMenuEntry(FText::FromName(Component->GetFName()), FText::GetEmpty(), FSlateIconFinder::FindIconForClass(Component->GetClass()), Action);
 			}
 		}
@@ -249,7 +249,7 @@ void FTargetComponentDetails::GenerateArrayElementWidget(TSharedRef<IPropertyHan
 			[
 				SNew(SSocketSelector)
 				.PropertyHandle(PropertyHandle)
-				.SceneComponent(this, &FTargetComponentDetails::GetTrackedMeshComponent)
+				.SceneComponent(this, &FTargetComponentDetails::GetAssociatedComponent)
 			];
 	}
 }

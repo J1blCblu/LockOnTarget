@@ -20,15 +20,13 @@ public class LockOnTarget : ModuleRules
 		//bEnforceIWYU = true;
 		//bUseUnity = false;
 
-		//Lock On Target Unreal Insights preprocessor definition.
-		PublicDefinitions.Add("LOT_INSIGHTS = 0");
-			
-		PublicDependencyModuleNames.AddRange(
+        PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
                 "Core",
                 "CoreUObject",
                 "Engine",
+
             }
 			);
 			
@@ -40,7 +38,9 @@ public class LockOnTarget : ModuleRules
 				"UMG",
 				"Projects",
 				"NetCore",
-			}
+				"TraceLog",
+
+            }
 			);
 	}
 }

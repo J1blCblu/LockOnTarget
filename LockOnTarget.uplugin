@@ -1,8 +1,7 @@
 {
-	"FileVersion": 1,
+	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "1.5.4",
-	"EngineVersion": "5.1.0",
+	"VersionName": "1.6.0",
 	"FriendlyName": "LockOnTarget",
 	"Description": "Lock On Target system",
 	"Category": "Gameplay",
@@ -11,16 +10,18 @@
 	"DocsURL": "https://github.com/J1blCblu/LockOnTarget/wiki",
 	"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/content/d58106fca28446ec88caad16c5a35fe8",
 	"SupportURL": "https://github.com/J1blCblu/LockOnTarget/issues",
+	"EngineVersion": "5.1.0",
 	"CanContainContent": true,
-	"IsBetaVersion": false,
-	"IsExperimentalVersion": false,
 	"Installed": true,
 	"Modules": [
 		{
 			"Name": "LockOnTarget",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault",
-			"WhitelistPlatforms": [ "Win64", "Linux" ]
+			"PlatformAllowList": [
+				"Win64",
+				"Linux"
+			]
 		},
 		{
 			"Name": "LockOnTargetDev",

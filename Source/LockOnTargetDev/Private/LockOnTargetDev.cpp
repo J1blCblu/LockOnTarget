@@ -4,7 +4,7 @@
 
 #if WITH_GAMEPLAY_DEBUGGER
 #include "GameplayDebugger.h"
-#include "GameplayDebugger/GDC_LockOnTargetComponent.h"
+#include "GameplayDebugger/GameplayDebuggerCategory_LockOnTarget.h"
 #endif //WITH_GAMEPLAY_DEBUGGER
 
 IMPLEMENT_MODULE(FLockOnTargetDevModule, LockOnTargetDev)
@@ -13,7 +13,7 @@ void FLockOnTargetDevModule::StartupModule()
 {
 #if WITH_GAMEPLAY_DEBUGGER
 	IGameplayDebugger& GDModule = IGameplayDebugger::Get();
-	GDModule.RegisterCategory(TEXT("LockOnTarget"), IGameplayDebugger::FOnGetCategory::CreateStatic(&FGDC_LockOnTarget::MakeInstance), EGameplayDebuggerCategoryState::Disabled);
+	GDModule.RegisterCategory(TEXT("LockOnTarget"), IGameplayDebugger::FOnGetCategory::CreateStatic(&FGameplayDebuggerCategory_LockOnTarget::MakeInstance), EGameplayDebuggerCategoryState::Disabled);
 	GDModule.NotifyCategoriesChanged();
 #endif //WITH_GAMEPLAY_DEBUGGER
 }

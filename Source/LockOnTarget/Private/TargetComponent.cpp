@@ -9,18 +9,20 @@
 
 UTargetComponent::UTargetComponent()
 	: bCanBeCaptured(true)
-	, TrackedMeshName(NAME_None)
-	, CaptureRadius(1700.f)
-	, LostOffsetRadius(100.f)
-	, FocusPoint(EFocusPoint::CapturedSocket)
+	, AssociatedComponentName(NAME_None)
+	, CaptureRadius(2200.f)
+	, LostOffsetRadius(150.f)
+	, Priority(0.5)
+	, FocusPointType(ETargetFocusPointType::CapturedSocket)
 	, FocusPointCustomSocket(NAME_None)
-	, FocusPointOffset(0.f)
+	, FocusPointRelativeOffset(0.f)
 	, bWantsDisplayWidget(true)
 	, WidgetRelativeOffset(0.f)
-	, bSkipMeshInitializationByName(false)
+	, AssociatedComponent(nullptr)
 {
 	PrimaryComponentTick.bCanEverTick = false;
 	PrimaryComponentTick.bStartWithTickEnabled = false;
+	bWantsInitializeComponent = true;
 	Sockets.Add(NAME_None);
 }
 
@@ -29,15 +31,38 @@ UTargetManager& UTargetComponent::GetTargetManager() const
 	return UTargetManager::Get(*GetWorld());
 }
 
+void UTargetComponent::InitializeComponent()
+{
+	Super::InitializeComponent();
+
+	if (!AssociatedComponent.IsValid())
+	{
+		if (AssociatedComponentName.IsNone())
+		{
+			if (const AActor* const Owner = GetOwner())
+			{
+				AssociatedComponent = Owner->GetRootComponent();
+			}
+		}
+		else
+		{
+			AssociatedComponent = FindComponentByName<UMeshComponent>(GetOwner(), AssociatedComponentName);
+		}
+	}
+}
+
+void UTargetComponent::SetAssociatedComponent(USceneComponent* InAssociatedComponent)
+{
+	if (IsValid(InAssociatedComponent) && InAssociatedComponent != AssociatedComponent.Get())
+	{
+		AssociatedComponent = InAssociatedComponent;
+	}
+}
+
 void UTargetComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	verify(GetTargetManager().RegisterTarget(this));
-
-	if (!bSkipMeshInitializationByName)
-	{
-		TrackedMeshComponent = FindMeshComponent();
-	}
+	GetTargetManager().RegisterTarget(this);
 }
 
 void UTargetComponent::EndPlay(EEndPlayReason::Type Reason)
@@ -45,12 +70,8 @@ void UTargetComponent::EndPlay(EEndPlayReason::Type Reason)
 	Super::EndPlay(Reason);
 	bCanBeCaptured = false;
 	DispatchTargetException(ETargetExceptionType::Destruction);
-	verify(GetTargetManager().UnregisterTarget(this));
+	GetTargetManager().UnregisterTarget(this);
 }
-
-/**
- * Target State
- */
 
 bool UTargetComponent::CanBeCaptured() const
 {
@@ -63,80 +84,66 @@ bool UTargetComponent::CanBeReferencedOverNetwork() const
 	return IsNetMode(NM_Standalone) || (IsSupportedForNetworking() && GetOwner()->GetIsReplicated());
 }
 
-bool UTargetComponent::IsCaptured() const
-{
-	return Invaders.Num() > 0;
-}
-
 void UTargetComponent::SetCanBeCaptured(bool bInCanBeCaptured)
 {
-	bCanBeCaptured = bInCanBeCaptured;
-
-	if (!bCanBeCaptured)
+	if (bCanBeCaptured != bInCanBeCaptured)
 	{
-		DispatchTargetException(ETargetExceptionType::StateInvalidation);
+		bCanBeCaptured = bInCanBeCaptured;
+
+		if (!bCanBeCaptured)
+		{
+			DispatchTargetException(ETargetExceptionType::StateInvalidation);
+		}
 	}
 }
 
-TArray<ULockOnTargetComponent*> UTargetComponent::GetInvaders() const
+void UTargetComponent::NotifyTargetCaptured(ULockOnTargetComponent* Instigator)
 {
-	return TArray<ULockOnTargetComponent*>(Invaders);
+	check(IsValid(Instigator) && Instigator->GetTargetComponent() == this);
+	check(IsSocketValid(Instigator->GetCapturedSocket())); //Checked here to reduce runtime overhead.
+	Invaders.Add(Instigator);
+	K2_OnCaptured(Instigator);
+	OnTargetComponentCaptured.Broadcast(Instigator);
 }
 
-void UTargetComponent::CaptureTarget(ULockOnTargetComponent* Instigator)
+void UTargetComponent::NotifyTargetReleased(ULockOnTargetComponent* Instigator)
 {
-	if (ensure(IsValid(Instigator)))
-	{
-		checkf(IsSocketValid(Instigator->GetCapturedSocket()), TEXT("Captured socket doesn't exists in the Target."));
-		Invaders.Add(Instigator);
-		K2_OnCaptured(Instigator);
-		OnCaptured.Broadcast(Instigator);
-	}
-}
-
-void UTargetComponent::ReleaseTarget(ULockOnTargetComponent* Instigator)
-{
-	if (ensure(IsValid(Instigator)))
-	{
-		verify(Invaders.RemoveSingleSwap(Instigator, false));
-		K2_OnReleased(Instigator);
-		OnReleased.Broadcast(Instigator);
-	}
+	check(IsValid(Instigator));
+	Invaders.RemoveSingle(Instigator);
+	K2_OnReleased(Instigator);
+	OnTargetComponentReleased.Broadcast(Instigator);
 }
 
 void UTargetComponent::DispatchTargetException(ETargetExceptionType Exception)
 {
-	//Reverse loop as elements might be removed.
-	for (int32 i = Invaders.Num() - 1; i >= 0; --i)
+	if (IsCaptured())
 	{
-		if (Exception == ETargetExceptionType::SocketInvalidation && IsSocketValid(Invaders[i]->GetCapturedSocket()))
+		//Reverse loop as elements might be removed.
+		for (int32 i = Invaders.Num() - 1; i >= 0; --i)
 		{
-			continue;
+			if (Exception == ETargetExceptionType::SocketInvalidation && IsSocketValid(Invaders[i]->GetCapturedSocket()))
+			{
+				continue;
+			}
+
+			Invaders[i]->ReceiveTargetException(Exception);
 		}
-
-		Invaders[i]->ReceiveTargetException(Exception);
 	}
-}
-
-/**
- * Sockets
- */
-
-bool UTargetComponent::IsSocketValid(FName Socket) const
-{
-	return Sockets.Contains(Socket);
 }
 
 FVector UTargetComponent::GetSocketLocation(FName Socket) const
 {
-	return GetTrackedMeshComponent() ? GetTrackedMeshComponent()->GetSocketLocation(Socket) : GetOwner()->GetActorLocation();
+	const USceneComponent* const TrackedComponent = GetAssociatedComponent();
+	return TrackedComponent ? TrackedComponent->GetSocketLocation(Socket) : GetOwner()->GetActorLocation();
 }
 
 bool UTargetComponent::AddSocket(FName Socket)
 {
 	bool bAdded = false;
 
-	if (GetTrackedMeshComponent() && GetTrackedMeshComponent()->DoesSocketExist(Socket) && !Sockets.Contains(Socket))
+	const USceneComponent* const TrackedComponent = GetAssociatedComponent();
+
+	if (TrackedComponent && TrackedComponent->DoesSocketExist(Socket) && !Sockets.Contains(Socket))
 	{
 		Sockets.Add(Socket);
 		bAdded = true;
@@ -157,83 +164,40 @@ bool UTargetComponent::RemoveSocket(FName Socket)
 	return bRemoved;
 }
 
-/**
- * Focus Point
- */
-
-FVector UTargetComponent::GetFocusLocation(const ULockOnTargetComponent* Instigator) const
+FVector UTargetComponent::GetFocusPointLocation(const ULockOnTargetComponent* Instigator) const
 {
+	check(IsValid(Instigator) && GetOwner());
 	FVector FocusPointLocation{ 0.f };
 
-	switch (FocusPoint)
+	switch (FocusPointType)
 	{
-	case EFocusPoint::CapturedSocket:
-
-		FocusPointLocation = GetSocketLocation(IsValid(Instigator) ? Instigator->GetCapturedSocket() : NAME_None);
+	case ETargetFocusPointType::CapturedSocket:
+		FocusPointLocation = GetSocketLocation(Instigator->GetCapturedSocket());
 		break;
-
-	case EFocusPoint::CustomSocket:
-
+	
+	case ETargetFocusPointType::CustomSocket:
 		FocusPointLocation = GetSocketLocation(FocusPointCustomSocket);
 		break;
-
-	case EFocusPoint::Custom:
-
+	
+	case ETargetFocusPointType::Custom:
 		FocusPointLocation = GetCustomFocusPoint(Instigator);
 		break;
-
+	
 	default:
-
-		LOG_ERROR("Unknown EFocusPoint is discovered.");
 		checkNoEntry();
 		break;
 	}
 
-	return FocusPointLocation + FocusPointOffset;
+	if (!FocusPointRelativeOffset.IsNearlyZero())
+	{
+		FocusPointLocation += GetOwner()->GetActorTransform().TransformVectorNoScale(FocusPointRelativeOffset);
+	}
+
+	return FocusPointLocation;
 }
 
 FVector UTargetComponent::GetCustomFocusPoint_Implementation(const ULockOnTargetComponent* Instigator) const
 {
 	LOG_WARNING("Default implementation is called. Please override in child classes.");
-	return FVector{ 0.f };
-}
-
-/**
- * Tracked Mesh
- */
-
-USceneComponent* UTargetComponent::GetTrackedMeshComponent() const
-{
-	return TrackedMeshComponent.IsValid() ? TrackedMeshComponent.Get() : GetRootComponent();
-}
-
-void UTargetComponent::SetTrackedMeshComponent(USceneComponent* InTrackedComponent)
-{
-	if (IsValid(InTrackedComponent) && InTrackedComponent != TrackedMeshComponent.Get())
-	{
-		TrackedMeshComponent = InTrackedComponent;
-
-		if (!HasBegunPlay())
-		{
-			bSkipMeshInitializationByName = true;
-		}
-	}
-}
-
-USceneComponent* UTargetComponent::FindMeshComponent() const
-{
-	USceneComponent* Mesh = FindComponentByName<UMeshComponent>(GetOwner(), TrackedMeshName);
-
-	//If not found or None.
-	if (!Mesh)
-	{
-		Mesh = GetRootComponent();
-	}
-
-	return Mesh;
-}
-
-USceneComponent* UTargetComponent::GetRootComponent() const
-{
-	return GetOwner() ? GetOwner()->GetRootComponent() : nullptr;
+	return FVector::ZeroVector;
 }

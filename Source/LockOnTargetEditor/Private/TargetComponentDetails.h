@@ -27,13 +27,13 @@ public:
 
 private:
 
-	FName GetTrackedMeshName() const;
+	FName GetAssociatedComponentName() const;
 	AActor* GetComponentEditorOwner() const;
-	USceneComponent* GetTrackedMeshComponent() const;
+	USceneComponent* GetAssociatedComponent() const;
 
-	void UpdateMeshPropertyText();
-	void OnCommitMeshEntry(FName MeshName);
-	void OnCommitMeshText(const FText& ItemFText, ETextCommit::Type CommitInfo);
+	void UpdateAssociatedComponentNameText();
+	void OnCommitAssociatedComponentNameEntry(FName MeshName);
+	void OnCommitAssociatedComponentNameText(const FText& ItemFText, ETextCommit::Type CommitInfo);
 
 	TSharedRef<SWidget> OnGetMeshContent();
 	void GenerateArrayElementWidget(TSharedRef<IPropertyHandle> PropertyHandle, int32 ArrayIndex, IDetailChildrenBuilder& ChildrenBuilder);
@@ -41,7 +41,7 @@ private:
 private:
 
 	TWeakObjectPtr<UTargetComponent> EditedComponent;
-	TSharedPtr<IPropertyHandle> MeshPropertyHandle;
+	TSharedPtr<IPropertyHandle> AssociatedComponentNamePropertyHandle;
 	TSharedPtr<IPropertyHandle> SocketsPropertyHandle;
-	TSharedPtr<SEditableTextBox> MeshTextBox;
+	TSharedPtr<SEditableTextBox> AssociatedComponentNameTextBox;
 };

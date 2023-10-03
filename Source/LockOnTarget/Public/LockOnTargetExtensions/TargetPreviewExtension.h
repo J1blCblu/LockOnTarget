@@ -2,9 +2,9 @@
 
 #pragma once
 
-#include "LockOnTargetModuleBase.h"
+#include "LockOnTargetExtensions/LockOnTargetExtensionBase.h"
 #include "LockOnTargetTypes.h"
-#include "TargetPreviewModule.generated.h"
+#include "TargetPreviewExtension.generated.h"
 
 class UUserWidget;
 class UWidgetComponent;
@@ -13,14 +13,14 @@ struct FStreamableHandle;
 /**
  * Tries to predictively find a new Target and mark it.
  */
-UCLASS(Blueprintable)
-class LOCKONTARGET_API UTargetPreviewModule : public ULockOnTargetModuleBase
+UCLASS(Blueprintable, HideCategories = Tick)
+class LOCKONTARGET_API UTargetPreviewExtension : public ULockOnTargetExtensionBase
 {
 	GENERATED_BODY()
 
 public:
 
-	UTargetPreviewModule();
+	UTargetPreviewExtension();
 
 public: /** Config */
 
@@ -29,7 +29,7 @@ public: /** Config */
 	TSoftClassPtr<UUserWidget> WidgetClass;
 
 	/** Preview update rate. */
-	UPROPERTY(EditDefaultsOnly, Category="Target Preview", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f, Units = "s"))
+	UPROPERTY(EditDefaultsOnly, Category="Target Preview", meta = (ClampMin = 0.f, ClampMax = 1.f, Units = "s"))
 	float UpdateRate;
 
 private: /** Internal */
@@ -43,9 +43,6 @@ private: /** Internal */
 
 	TSharedPtr<FStreamableHandle> StreamableHandle;
 
-	//Whether the preview is active.
-	bool bIsPreviewActive;
-
 	//Whether the widget was successfully initialized or not.
 	bool bWidgetIsInitialized;
 
@@ -58,7 +55,7 @@ public:
 
 	/** Whether the preview is active. */
 	UFUNCTION(BlueprintPure, Category = "Target Preview")
-	bool IsPreviewActive() const { return bIsPreviewActive; }
+	bool IsPreviewActive() const { return IsTickEnabled(); }
 
 	/** Sets preview active state. */
 	UFUNCTION(BlueprintCallable, Category = "Target Preview")
@@ -82,7 +79,7 @@ protected:
 
 public: /** Overrides */
 
-	//ULockOnTargetModuleBase
+	//ULockOnTargetExtensionBase
 	virtual void Initialize(ULockOnTargetComponent* Instigator) override;
 	virtual void Deinitialize(ULockOnTargetComponent* Instigator) override;
 	virtual void OnTargetLocked(UTargetComponent* Target, FName Socket) override;

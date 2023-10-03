@@ -9,22 +9,26 @@
 #include "GameplayDebuggerCategory.h"
 
 struct FFindTargetContext;
+struct FTargetContext;
+struct FFindTargetRequestResponse;
+
 class APlayerController;
 class ULockOnTargetComponent;
 class UTargetComponent;
-class UThirdPersonTargetHandler;
+class UWeightedTargetHandler;
 
 /**
  * Ref: GameplayDebuggerCategory_AI and GameplayDebuggerCategory_EQS
  */
-class FGDC_LockOnTarget : public FGameplayDebuggerCategory
+class FGameplayDebuggerCategory_LockOnTarget : public FGameplayDebuggerCategory
 {
 public:
-	FGDC_LockOnTarget();
+
+	FGameplayDebuggerCategory_LockOnTarget();
 
 	static TSharedRef<FGameplayDebuggerCategory> MakeInstance()
 	{
-		return MakeShared<FGDC_LockOnTarget>();
+		return MakeShared<FGameplayDebuggerCategory_LockOnTarget>();
 	}
 
 	/** Not implemented as LockOnTarget draws local info. */
@@ -33,22 +37,23 @@ public:
 	virtual void DrawData(APlayerController* Controller, FGameplayDebuggerCanvasContext& CanvasContext) override;
 
 protected:
+
 	//struct FRepData
 	//{
 	//	void Serialize(FArchive& Ar);
 	//} RepData;
 
 private:
+
 	TWeakObjectPtr<ULockOnTargetComponent> LockOn;
-	TArray<TPair<FVector, float>, TInlineAllocator<50>> Modifiers;
 	float SimulatedPlayerInput;
 	uint8 bSimulateTargetHandler : 1;
 
-private: /**  */
+private:
 
 	//General Info
 	void DisplayDebugInfo(FGameplayDebuggerCanvasContext& CanvasContext) const;
-	FString CollectModulesInfo() const;
+	FString CollectExtensionsInfo() const;
 	FString CollectInvadersInfo() const;
 	FString CollectTargetSocketsInfo(const ULockOnTargetComponent* InLockOn) const;
 
@@ -57,22 +62,15 @@ private: /**  */
 
 	//TargetHandler
 	void SimulateTargetHandler(FGameplayDebuggerCanvasContext& CanvasContext);
-	void OnModifierCalculated(const FFindTargetContext& TargetContext, float Modifier);
-	void DrawSimulation(UThirdPersonTargetHandler* TargetHandler, FGameplayDebuggerCanvasContext& CanvasContext);
-	void DrawModifiers(FGameplayDebuggerCanvasContext& CanvasContext);
-	void DrawScreenOffset(UThirdPersonTargetHandler* const TargetHandler, FGameplayDebuggerCanvasContext& CanvasContext) const;
-	void DrawPlayerInput(UThirdPersonTargetHandler* TargetHandler, FGameplayDebuggerCanvasContext& CanvasContext);
+	void DrawWeights(FGameplayDebuggerCanvasContext& CanvasContext, const FFindTargetRequestResponse& Response);
+	void DrawPlayerInput(UWeightedTargetHandler* TargetHandler, FGameplayDebuggerCanvasContext& CanvasContext);
 
-private: /** Input */
+	//Input
 	void OnKeyPressedChangeDebugActor();
 	void OnKeyPressedSimulateTargetHandler();
 	void OnKeyPressedSwitchTarget();
 	void OnRotateGuidanceLineUp();
 	void OnRotateGuidanceLineDown();
-
-private: /** Misc */
-	FVector2D TrigonometricToVector2D(float TrigAngle, bool bInvertYAxis = false) const;
-	void GetScreenOffsetBox(UThirdPersonTargetHandler* TargetHandler, FGameplayDebuggerCanvasContext& CanvasContext, FVector2D& StartPos, FVector2D& EndPos) const;
 };
 
 #endif //WITH_GAMEPLAY_DEBUGGER

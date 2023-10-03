@@ -13,12 +13,12 @@ class USceneComponent;
 class UTargetManager;
 class UUserWidget;
 
-DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_OneParam(FOnOwnerCaptured, UTargetComponent, OnCaptured, class ULockOnTargetComponent*, Instigator);
-DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_OneParam(FOnOwnerReleased, UTargetComponent, OnReleased, class ULockOnTargetComponent*, Instigator);
+DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_OneParam(FOnTargetComponentCaptured, UTargetComponent, OnTargetComponentCaptured, class ULockOnTargetComponent*, Instigator);
+DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_OneParam(FOnTargetComponentReleased, UTargetComponent, OnTargetComponentReleased, class ULockOnTargetComponent*, Instigator);
 
 /** Determines focus point type. */
 UENUM(BlueprintType)
-enum class EFocusPoint : uint8
+enum class ETargetFocusPointType : uint8
 {
 	CapturedSocket	UMETA(ToolTip = "Captured socket world location will be used."),
 	CustomSocket	UMETA(ToolTip = "Custom socket world location will be used."),
@@ -26,9 +26,11 @@ enum class EFocusPoint : uint8
 };
 
 /**
- * Represents a Target that ULockOnTargetComponent can capture in conjunction with a Socket.
- * It is kind of a dumping ground for anything LockOnTarget subsystems may need.
- * Has a special FocusPoint concept for tracking systems.
+ * TargetComponent gives LockOnTargetComponent the ability to capture it with one of available sockets.
+ * Can be used as a storage for the Target specific data.
+ * Has a special 'focus point' concept for tracking systems.
+ * 
+ * There is a small and simple TargetManager keeps track of registered Targets in game.
  * 
  * @Note: Not replicated. Take this into account when changing its state.
  * 
@@ -43,46 +45,52 @@ public:
 
 	UTargetComponent();
 	friend class FTargetComponentDetails; //Details customization.
-	static constexpr uint32 NumInlinedInvaders = 1;
+	static constexpr uint32 NumInlinedInvaders = 3;
 	UTargetManager& GetTargetManager() const;
 
-private: /** Core Config */
+	//@TODO: Display a warning next to invalid sockets after changing AssociatedComponentName in details. Or maybe clear directly.
 
-	/** Can the Target be captured by ULockOnTargetComponent. */
-	UPROPERTY(EditAnywhere, Category = "Default Settings")
+private: /** General */
+
+	/** Whether the Target can be captured. SetCanBeCaptured(). */
+	UPROPERTY(EditAnywhere, Category = "General")
 	bool bCanBeCaptured;
 
-	/** Specifies the TrackedMeshComponent by name, which is used to find Sockets, attach a Widget, etc. If 'None' then the root component will be used. */
-	UPROPERTY(EditAnywhere, Category = "Default Settings")
-	FName TrackedMeshName;
+	/** Specifies the associated component by name used for Socket lookup, attachment and etc. If 'None' then the root component will be used. */
+	UPROPERTY(EditAnywhere, Category = "General")
+	FName AssociatedComponentName;
 
-	/** Sockets that ULockOnTargetComponent can capture. Num should be > 0. */
-	UPROPERTY(EditAnywhere, Category = "Default Settings", meta = (NoElementDuplicate, EditFixedOrder, DisplayName = "Sockets Data"))
+	/** Sockets to capture. Add/RemoveSocket(). */
+	UPROPERTY(EditAnywhere, Category = "General", meta = (EditFixedOrder, DisplayName = "Sockets Data", NoResetToDefault))
 	TArray<FName> Sockets;
 
-public: /** Capture Radius */
+public: /** General */
 
 	/** Radius in which the Target can be captured. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture Radius", meta = (ClampMin = 50.f, UIMin = 50.f, Units = "cm"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "General", meta = (ClampMin = 50.f, Units = "cm"))
 	float CaptureRadius;
 
 	/** LostRadius (CaptureRadius + LostOffsetRadius) in which the captured Target should be released. Helps avoid immediate release at the capture boundary. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture Radius", meta = (ClampMin = 0.f, UIMin = 0.f, Units = "cm"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "General", meta = (ClampMin = 0.f, Units = "cm"))
 	float LostOffsetRadius;
+
+	/** 0 - higher priority, 1 - lower priority. Some animals and bosses may need lower and higher priority respectively. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "General", meta = (ClampMin = 0.f, ClampMax = 1.f, Units = "x"))
+	float Priority;
 
 public: /** Focus Point */
 
-	/** Specifies FocusPoint type. */
+	/** Specifies the FocusPoint type. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Focus Point")
-	EFocusPoint FocusPoint;
+	ETargetFocusPointType FocusPointType;
 
 	/** Specifies a custom socket for FocusPoint. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Focus Point", meta = (EditCondition = "FocusPoint == EFocusPoint::CustomSocket", EditConditionHides))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Focus Point", meta = (EditCondition = "FocusPointType == ETargetFocusPointType::CustomSocket", EditConditionHides))
 	FName FocusPointCustomSocket;
 
 	/** FocusPoint offset in global space. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Focus Point")
-	FVector FocusPointOffset;
+	FVector FocusPointRelativeOffset;
 
 public: /** Widget */
 
@@ -100,24 +108,21 @@ public: /** Widget */
 
 public: /** Callbacks */
 
-	/** Called if the Target has been successfully captured by ULockOnTargetComponent. */
-	UPROPERTY(BlueprintAssignable, Category = "Target")
-	FOnOwnerCaptured OnCaptured;
+	/** Called if the Target has been successfully captured by LockOnTargetComponent. */
+	UPROPERTY(BlueprintAssignable, Category = "Target|Delegates")
+	FOnTargetComponentCaptured OnTargetComponentCaptured;
 
-	/** Called if the Target has been successfully released by ULockOnTargetComponent. */
-	UPROPERTY(BlueprintAssignable, Category = "Target")
-	FOnOwnerReleased OnReleased;
+	/** Called if the Target has been successfully released by LockOnTargetComponent. */
+	UPROPERTY(BlueprintAssignable, Category = "Target|Delegates")
+	FOnTargetComponentReleased OnTargetComponentReleased;
 
-private: /** Internal */
+private:
 
-	//LockOnTargetComponents that captures the Target.
+	//LockOnTargetComponents that are currently capturing the Target.
 	TArray<ULockOnTargetComponent*, TInlineAllocator<NumInlinedInvaders>> Invaders;
 
-	//Not actually a UMeshComponent, cause we might want to store the root component.
-	TWeakObjectPtr<USceneComponent> TrackedMeshComponent;
-
-	//Should we skip the TrackedMeshComponent initialization by name.
-	uint8 bSkipMeshInitializationByName : 1;
+	//The component used for Socket lookup, attachment and etc.
+	TWeakObjectPtr<USceneComponent> AssociatedComponent;
 
 public: /** Target State */
 
@@ -133,36 +138,34 @@ public: /** Target State */
 
 	/** Whether the Target is captured by any ULockOnTargetComponent. */
 	UFUNCTION(BlueprintPure, Category = "Target")
-	bool IsCaptured() const;
+	bool IsCaptured() const { return GetInvadersNum() > 0; }
 
 	/** Gets all ULockOnTargetsComponents that have captured the Target. Usually 1 in a standalone game. */
 	UFUNCTION(BlueprintPure, Category = "Target")
-	TArray<ULockOnTargetComponent*> GetInvaders() const;
+	TArray<ULockOnTargetComponent*> GetInvaders() const { return TArray<ULockOnTargetComponent*>(Invaders); }
 
-	/** Called to inform the Target that it's been captured by ULockOnTargetComponent. */
-	virtual void CaptureTarget(ULockOnTargetComponent* Instigator);
-
-	/** Called if the Target has been successfully captured by ULockOnTargetComponent. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "TargetingHelper", meta = (DisplayName = "On Target Captured"))
-	void K2_OnCaptured(const ULockOnTargetComponent* Instigator);
-
-	/** Called to inform the Target that it's been released by ULockOnTargetComponent. */
-	virtual void ReleaseTarget(ULockOnTargetComponent* Instigator);
-
-	/** Called if the Target has been successfully released by ULockOnTargetComponent. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "TargetingHelper", meta = (DisplayName = "On Target Released"))
-	void K2_OnReleased(const ULockOnTargetComponent* Instigator);
-
-	//Dispatch an exception/interrupt message from the Target to the Invaders.
-	void DispatchTargetException(ETargetExceptionType Exception);
+	/** Gets all ULockOnTargetsComponents that have captured the Target. Usually 1 in a standalone game. */
+	UFUNCTION(BlueprintPure, Category = "Target")
+	int32 GetInvadersNum() const { return Invaders.Num(); }
 
 public: /** Sockets */
 
+	/** Returns the associated component. */
+	UFUNCTION(BlueprintPure, Category = "Target|Mesh")
+	USceneComponent* GetAssociatedComponent() const { return AssociatedComponent.IsValid() ? AssociatedComponent.Get() : nullptr; }
+
+	/** 
+	 * Updates the associated component.
+	 * @Note: Existing sockets aren't verified.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Target|Mesh")
+	void SetAssociatedComponent(USceneComponent* InAssociatedComponent);
+
 	/** Does the given Socket exist in the Target. */
 	UFUNCTION(BlueprintPure, Category = "Target")
-	bool IsSocketValid(FName Socket) const;
+	bool IsSocketValid(FName Socket) const { return Sockets.Contains(Socket); };
 
-	/** Gets all Sockets of the Target. */
+	/** Returns all available Sockets. */
 	UFUNCTION(BlueprintPure, Category = "Target")
 	const TArray<FName>& GetSockets() const { return Sockets; }
 
@@ -180,33 +183,38 @@ public: /** Sockets */
 
 public: /** Focus Point */
 
-	/** Returns the FocusPoint location for ULockOnTargetComponent. Mostly used by tracking systems. */
-	UFUNCTION(BlueprintPure, Category = "Target")
-	FVector GetFocusLocation(const ULockOnTargetComponent* Instigator) const;
+	/** Returns the 'focus point' location for ULockOnTargetComponent. Mostly used by tracking systems. */
+	UFUNCTION(BlueprintPure, Category = "Target|FocusPoint")
+	FVector GetFocusPointLocation(const ULockOnTargetComponent* Instigator) const;
 
 	/** Override to get a custom FocusPoint location. */
-	UFUNCTION(BlueprintNativeEvent, Category = "Targeting Helper")
+	UFUNCTION(BlueprintNativeEvent, Category = "Target|FocusPoint")
 	FVector GetCustomFocusPoint(const ULockOnTargetComponent* Instigator) const;
 	virtual FVector GetCustomFocusPoint_Implementation(const ULockOnTargetComponent* Instigator) const;
 
-public: /** Tracked Mesh */
+public: /** Communication */
 
-	/** Returns TrackedMeshComponent. */
-	UFUNCTION(BlueprintPure, Category = "Target")
-	USceneComponent* GetTrackedMeshComponent() const;
+	/** Called to inform the Target that it's been captured by ULockOnTargetComponent. */
+	virtual void NotifyTargetCaptured(ULockOnTargetComponent* Instigator);
 
-	/** Updates the TrackedMeshComponent. */
-	UFUNCTION(BlueprintCallable, Category = "TargetingHelper")
-	void SetTrackedMeshComponent(USceneComponent* InTrackedComponent);
+	/** Called to inform the Target that it's been captured by ULockOnTargetComponent. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Target", meta = (DisplayName = "On Target Captured"))
+	void K2_OnCaptured(const ULockOnTargetComponent* Instigator);
 
-protected: /** Helpers */
+	/** Called to inform the Target that it's been released by ULockOnTargetComponent. */
+	virtual void NotifyTargetReleased(ULockOnTargetComponent* Instigator);
 
-	USceneComponent* FindMeshComponent() const;
-	USceneComponent* GetRootComponent() const;
+	/** Called to inform the Target that it's been released by ULockOnTargetComponent. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Target", meta = (DisplayName = "On Target Released"))
+	void K2_OnReleased(const ULockOnTargetComponent* Instigator);
+
+	//Dispatch an exception/interrupt message to the Invaders.
+	void DispatchTargetException(ETargetExceptionType Exception);
 
 public: /** Overrides */
 
 	//UActorComponent
+	virtual void InitializeComponent() override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(EEndPlayReason::Type Reason) override;
 };

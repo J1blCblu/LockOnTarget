@@ -1,6 +1,6 @@
 // Copyright 2022-2023 Ivan Baktenkov. All Rights Reserved.
 
-#include "DefaultModules/WidgetModule.h"
+#include "LockOnTargetExtensions/WidgetExtension.h"
 #include "LockOnTargetComponent.h"
 #include "TargetComponent.h"
 #include "LockOnTargetDefines.h"
@@ -10,16 +10,16 @@
 #include "UObject/SoftObjectPath.h"
 #include "GameFramework/PlayerController.h"
 
-UWidgetModule::UWidgetModule()
+UWidgetExtension::UWidgetExtension()
 	: DefaultWidgetClass(FSoftClassPath(FString(TEXT("/Script/UMGEditor.WidgetBlueprint'/LockOnTarget/WBP_Target.WBP_Target_C'"))))
 	, Widget(nullptr)
 	, bWidgetIsActive(false)
 	, bWidgetIsInitialized(false)
 {
-	//Do something.
+	ExtensionTick.bCanEverTick = false;
 }
 
-void UWidgetModule::Initialize(ULockOnTargetComponent* Instigator)
+void UWidgetExtension::Initialize(ULockOnTargetComponent* Instigator)
 {
 	Super::Initialize(Instigator);
 
@@ -34,7 +34,7 @@ void UWidgetModule::Initialize(ULockOnTargetComponent* Instigator)
 	}
 }
 
-void UWidgetModule::Deinitialize(ULockOnTargetComponent* Instigator)
+void UWidgetExtension::Deinitialize(ULockOnTargetComponent* Instigator)
 {
 	if (IsWidgetInitialized())
 	{
@@ -51,18 +51,18 @@ void UWidgetModule::Deinitialize(ULockOnTargetComponent* Instigator)
 	Super::Deinitialize(Instigator);
 }
 
-void UWidgetModule::OnTargetLocked(UTargetComponent* Target, FName Socket)
+void UWidgetExtension::OnTargetLocked(UTargetComponent* Target, FName Socket)
 {
 	Super::OnTargetLocked(Target, Socket);
 
-	if (IsWidgetInitialized() && Target->bWantsDisplayWidget && GetController() && GetController()->IsLocalController())
+	if (IsWidgetInitialized() && Target->bWantsDisplayWidget && GetInstigatorController() && GetInstigatorController()->IsLocalController())
 	{
 		if (const auto* const PC = GetPlayerController())
 		{
 			Widget->SetOwnerPlayer(PC->GetLocalPlayer());
 		}
 
-		Widget->AttachToComponent(Target->GetTrackedMeshComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, Socket);
+		Widget->AttachToComponent(Target->GetAssociatedComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, Socket);
 		Widget->SetVisibility(true);
 		Widget->SetRelativeLocation(Target->WidgetRelativeOffset);
 		SetWidgetClass(Target->CustomWidgetClass.IsNull() ? DefaultWidgetClass : Target->CustomWidgetClass);
@@ -70,7 +70,7 @@ void UWidgetModule::OnTargetLocked(UTargetComponent* Target, FName Socket)
 	}
 }
 
-void UWidgetModule::OnTargetUnlocked(UTargetComponent* UnlockedTarget, FName Socket)
+void UWidgetExtension::OnTargetUnlocked(UTargetComponent* UnlockedTarget, FName Socket)
 {
 	Super::OnTargetUnlocked(UnlockedTarget, Socket);
 
@@ -82,17 +82,17 @@ void UWidgetModule::OnTargetUnlocked(UTargetComponent* UnlockedTarget, FName Soc
 	}
 }
 
-void UWidgetModule::OnSocketChanged(UTargetComponent* CurrentTarget, FName NewSocket, FName OldSocket)
+void UWidgetExtension::OnSocketChanged(UTargetComponent* CurrentTarget, FName NewSocket, FName OldSocket)
 {
 	Super::OnSocketChanged(CurrentTarget, NewSocket, OldSocket);
 
 	if (IsWidgetInitialized() && IsWidgetActive())
 	{
-		Widget->AttachToComponent(CurrentTarget->GetTrackedMeshComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, NewSocket);
+		Widget->AttachToComponent(CurrentTarget->GetAssociatedComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, NewSocket);
 	}
 }
 
-void UWidgetModule::SetWidgetClass(const TSoftClassPtr<UUserWidget>& WidgetClass)
+void UWidgetExtension::SetWidgetClass(const TSoftClassPtr<UUserWidget>& WidgetClass)
 {
 	if (WidgetClass.IsNull())
 	{
@@ -113,7 +113,7 @@ void UWidgetModule::SetWidgetClass(const TSoftClassPtr<UUserWidget>& WidgetClass
 	}
 }
 
-void UWidgetModule::OnWidgetClassLoaded()
+void UWidgetExtension::OnWidgetClassLoaded()
 {
 	if (IsWidgetInitialized() && StreamableHandle.IsValid() && StreamableHandle->HasLoadCompleted())
 	{
@@ -122,22 +122,22 @@ void UWidgetModule::OnWidgetClassLoaded()
 	}
 }
 
-bool UWidgetModule::IsWidgetInitialized() const
+bool UWidgetExtension::IsWidgetInitialized() const
 {
 	return bWidgetIsInitialized && ensureMsgf(IsValid(Widget), TEXT("Widget was initialized but is invalid. Maybe it was removed manually."));
 }
 
-bool UWidgetModule::IsWidgetActive() const
+bool UWidgetExtension::IsWidgetActive() const
 {
 	return bWidgetIsActive;
 }
 
-UWidgetComponent* UWidgetModule::GetWidget() const
+UWidgetComponent* UWidgetExtension::GetWidget() const
 {
 	return Widget;
 }
 
-void UWidgetModule::SetWidgetVisibility(bool bInVisibility)
+void UWidgetExtension::SetWidgetVisibility(bool bInVisibility)
 {
 	if (IsWidgetInitialized())
 	{
