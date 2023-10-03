@@ -4,13 +4,14 @@
 #include "TargetComponent.h"
 #include "TargetHandlers/TargetHandlerBase.h"
 #include "LockOnTargetDefines.h"
-#include "LockOnTargetModuleBase.h"
+#include "LockOnTargetExtensions/LockOnTargetExtensionBase.h"
 
 #include "Net/UnrealNetwork.h"
 #include "Net/Core/PushModel/PushModel.h"
 #include "TimerManager.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "GameFramework/Actor.h"
 
 ULockOnTargetComponent::ULockOnTargetComponent()
 	: bCanCaptureTarget(true)
@@ -18,7 +19,7 @@ ULockOnTargetComponent::ULockOnTargetComponent()
 	, BufferResetFrequency(.2f)
 	, ClampInputVector(-2.f, 2.f)
 	, InputProcessingDelay(0.25f)
-	, bFreezeInputAfterSwitch(true)
+	, bUseInputFreezing(true)
 	, UnfreezeThreshold(1e-2f)
 	, CurrentTargetInternal(FTargetInfo::NULL_TARGET)
 	, TargetingDuration(0.f)
@@ -33,10 +34,6 @@ ULockOnTargetComponent::ULockOnTargetComponent()
 	PrimaryComponentTick.TickInterval = 0.f;
 	PrimaryComponentTick.TickGroup = TG_PostPhysics;
 	SetIsReplicatedByDefault(true);
-	bWantsInitializeComponent = true;
-
-	//Seems work since UE5.0
-	//TargetHandlerImplementation = CreateDefaultSubobject<UThirdPersonTargetHandler>(TEXT("TargetHandler"));
 }
 
 void ULockOnTargetComponent::BeginPlay()
@@ -45,18 +42,18 @@ void ULockOnTargetComponent::BeginPlay()
 
 	InitializeSubobject(GetTargetHandler());
 
-	//Reverse loop to remove invalid modules.
-	for (int32 i = Modules.Num() - 1; i >= 0; --i)
+	//Reverse loop to remove invalid extensions.
+	for (int32 i = Extensions.Num() - 1; i >= 0; --i)
 	{
-		ULockOnTargetModuleBase* const Module = Modules[i];
+		ULockOnTargetExtensionBase* const Extension = Extensions[i];
 
-		if (IsValid(Module))
+		if (IsValid(Extension))
 		{
-			InitializeSubobject(Module);
+			InitializeSubobject(Extension);
 		}
 		else
 		{
-			Modules.RemoveAtSwap(i);
+			Extensions.RemoveAtSwap(i);
 		}
 	}
 }
@@ -66,14 +63,34 @@ void ULockOnTargetComponent::EndPlay(EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 
 	bCanCaptureTarget = false;
-	OnTargetReleased(CurrentTargetInternal);
+
+	if (IsTargetLocked())
+	{
+		NotifyTargetReleased(CurrentTargetInternal);
+	}
 
 	ClearTargetHandler();
-	RemoveAllModules();
+	RemoveAllExtensions();
 
 	if (UWorld* const World = GetWorld())
 	{
 		World->GetTimerManager().ClearAllTimersForObject(this);
+	}
+}
+
+void ULockOnTargetComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	if (IsTargetLocked())
+	{
+		TargetingDuration += DeltaTime;
+
+		if (HasAuthorityOverTarget())
+		{
+			ProcessAnalogInput(DeltaTime);
+			CheckTargetState(DeltaTime);
+		}
 	}
 }
 
@@ -90,7 +107,7 @@ void ULockOnTargetComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 	Params.Condition = COND_SkipOwner; //Local authority.
 	DOREPLIFETIME_WITH_PARAMS_FAST(ThisClass, CurrentTargetInternal, Params);
 
-	//We need to initially synchronize the timer for unmapped simulated proxies. It's not accurate, but does it make sense?
+	//Need to initially synchronize the timer for unmapped simulated proxies.
 	DOREPLIFETIME_CONDITION(ThisClass, TargetingDuration, COND_InitialOnly);
 }
 
@@ -108,9 +125,9 @@ FVector ULockOnTargetComponent::GetCapturedSocketLocation() const
 	return IsTargetLocked() ? GetTargetComponent()->GetSocketLocation(GetCapturedSocket()) : FVector(0.f);
 }
 
-FVector ULockOnTargetComponent::GetCapturedFocusLocation() const
+FVector ULockOnTargetComponent::GetCapturedFocusPointLocation() const
 {
-	return IsTargetLocked() ? GetTargetComponent()->GetFocusLocation(this) : FVector(0.f);
+	return IsTargetLocked() ? GetTargetComponent()->GetFocusPointLocation(this) : FVector(0.f);
 }
 
 /*******************************************************************************************/
@@ -144,45 +161,35 @@ void ULockOnTargetComponent::EnableTargeting()
 		}
 		else
 		{
-			TryFindTarget();
+			const FFindTargetRequestParams RequestParams;
+			RequestFindTarget(RequestParams);
 		}
 	}
 }
 
-void ULockOnTargetComponent::TryFindTarget(FVector2D OptionalInput)
+void ULockOnTargetComponent::RequestFindTarget(const FFindTargetRequestParams& RequestParams)
 {
-	LOT_BOOKMARK("PerformFindTarget");
-	LOT_SCOPED_EVENT(TryFindTarget, Green);
-
+	LOT_BOOKMARK("RequestFindTarget");
+	LOT_SCOPED_EVENT(RequestFindTarget);
 	checkf(HasAuthorityOverTarget(), TEXT("Only the locally controlled owners are able to find a Target."));
 
-	if (IsValid(GetTargetHandler()))
+	if (GetTargetHandler())
 	{
-		const FTargetInfo NewTargetInfo = GetTargetHandler()->FindTarget(OptionalInput);
-		ProcessTargetHandlerResult(NewTargetInfo);
-	}
-	else
-	{
-		LOG_WARNING("Attemtp to access the invalid TargetHandler by %s", *GetFullNameSafe(GetOwner()));
+		ProcessTargetHandlerResponse(GetTargetHandler()->FindTarget(RequestParams));
 	}
 }
 
-void ULockOnTargetComponent::ProcessTargetHandlerResult(const FTargetInfo& TargetInfo)
+void ULockOnTargetComponent::ProcessTargetHandlerResponse(const FFindTargetRequestResponse& Response)
 {
+	const FTargetInfo TargetInfo = Response.Target;
+
 	if (CanTargetBeCaptured(TargetInfo))
 	{
 		UpdateTargetInfo(TargetInfo);
 	}
 	else
 	{
-		LOT_BOOKMARK("TargetNotFound");
-
-		ForEachSubobject([this](ULockOnTargetModuleProxy* Module)
-			{
-				Module->OnTargetNotFound(IsTargetLocked());
-			});
-
-		OnTargetNotFound.Broadcast(IsTargetLocked());
+		NotifyTargetNotFound();
 	}
 }
 
@@ -190,7 +197,7 @@ void ULockOnTargetComponent::CheckTargetState(float DeltaTime)
 {
 	check(IsTargetLocked() && HasAuthorityOverTarget());
 
-	if (IsValid(GetTargetHandler()))
+	if (GetTargetHandler())
 	{
 		GetTargetHandler()->CheckTargetState(CurrentTargetInternal, DeltaTime);
 	}
@@ -214,10 +221,16 @@ bool ULockOnTargetComponent::HasAuthorityOverTarget() const
 		return true;
 	}
 
-	if (GetOwner()->GetRemoteRole() != ROLE_AutonomousProxy && LocalRole == ROLE_Authority)
+	//Don't know why, but the listen server controlled pawn has the AutonomousProxy remote role, unlike the Controller.
+	//There's a hack as I don't want to have an AController/APawn dependency.
+	//We can get the remote role from the owner's owner which is the Controller.
+	if (const AActor* const Controller = GetOwner()->GetOwner())
 	{
-		// Local authority in control.
-		return true;
+		if (Controller->GetRemoteRole() != ROLE_AutonomousProxy && LocalRole == ROLE_Authority)
+		{
+			// Local authority in control.
+			return true;
+		}
 	}
 
 	return false;
@@ -265,7 +278,9 @@ void ULockOnTargetComponent::SwitchTargetManual(FVector2D PlayerInput)
 {
 	if (IsTargetLocked() && HasAuthorityOverTarget())
 	{
-		TryFindTarget(PlayerInput);
+		FFindTargetRequestParams Params;
+		Params.PlayerInput = PlayerInput;
+		RequestFindTarget(Params);
 	}
 }
 
@@ -316,86 +331,106 @@ void ULockOnTargetComponent::OnTargetInfoUpdated(const FTargetInfo& OldTarget)
 		if (OldTarget.TargetComponent == CurrentTargetInternal.TargetComponent)
 		{
 			//Same Target with a new socket.
-			OnTargetSocketChanged(OldTarget.Socket);
+			NotifyTargetSocketChanged(OldTarget.Socket);
 		}
 		else
 		{
 			//Another or a new Target.
-			OnTargetReleased(OldTarget);
-			OnTargetCaptured(CurrentTargetInternal);
+			if (IsTargetLocked())
+			{
+				NotifyTargetReleased(OldTarget);
+			}
+
+			NotifyTargetCaptured(CurrentTargetInternal);
 		}
 	}
 	else
 	{
 		//Null Target.
-		OnTargetReleased(OldTarget);
+		NotifyTargetReleased(OldTarget);
 	}
 }
 
-void ULockOnTargetComponent::OnTargetCaptured(const FTargetInfo& Target)
+void ULockOnTargetComponent::NotifyTargetCaptured(const FTargetInfo& Target)
 {
+	LOT_BOOKMARK("Target captured %s", *GetNameSafe(Target->GetOwner()));
+	LOT_SCOPED_EVENT(NotifyTargetCaptured);
+
 	check(Target.TargetComponent);
 
-	LOT_BOOKMARK("Target captured %s", *GetNameSafe(Target.TargetComponent->GetOwner()));
-
 	bIsTargetLocked = true;
-	Target.TargetComponent->CaptureTarget(this);
+	Target->NotifyTargetCaptured(this);
 
-	ForEachSubobject([&Target](ULockOnTargetModuleProxy* Module)
-		{
-			Module->OnTargetLocked(Target.TargetComponent, Target.Socket);
-		});
+	if (HasBegunPlay())
+	{
+		ForEachSubobject([&Target](ULockOnTargetExtensionProxy* Extension)
+			{
+				Extension->OnTargetLocked(Target.TargetComponent, Target.Socket);
+			});
+	}
 
 	OnTargetLocked.Broadcast(Target.TargetComponent, Target.Socket);
 }
 
-void ULockOnTargetComponent::OnTargetReleased(const FTargetInfo& Target)
+void ULockOnTargetComponent::NotifyTargetReleased(const FTargetInfo& Target)
 {
-	if (IsTargetLocked())
-	{
-		check(Target.TargetComponent);
+	LOT_BOOKMARK("Target released %s", *GetNameSafe(Target->GetOwner()));
+	LOT_SCOPED_EVENT(NotifyTargetReleased);
 
-		LOT_BOOKMARK("Target released %s", *GetNameSafe(Target.TargetComponent->GetOwner()));
+	check(Target.TargetComponent);
 
-		bIsTargetLocked = false;
-		Target.TargetComponent->ReleaseTarget(this);
+	bIsTargetLocked = false;
+	Target->NotifyTargetReleased(this);
 
-		ForEachSubobject([&Target](ULockOnTargetModuleProxy* Module)
-			{
-				Module->OnTargetUnlocked(Target.TargetComponent, Target.Socket);
-			});
+	ForEachSubobject([&Target](ULockOnTargetExtensionProxy* Extension)
+		{
+			Extension->OnTargetUnlocked(Target.TargetComponent, Target.Socket);
+		});
 
-		OnTargetUnlocked.Broadcast(Target.TargetComponent, Target.Socket);
+	OnTargetUnlocked.Broadcast(Target.TargetComponent, Target.Socket);
 
-		//Clear the timer after notifying all listeners.
-		TargetingDuration = 0.f;
-	}
+	//Clear the timer after notifying all listeners.
+	TargetingDuration = 0.f;
 }
 
-void ULockOnTargetComponent::OnTargetSocketChanged(FName OldSocket)
+void ULockOnTargetComponent::NotifyTargetSocketChanged(FName OldSocket)
 {
 	LOT_BOOKMARK("SocketChanged %s->%s", *OldSocket.ToString(), *GetCapturedSocket().ToString());
+	LOT_SCOPED_EVENT(ReceiveTargetSocketUpdate);
 
-	ForEachSubobject([this, OldSocket](ULockOnTargetModuleProxy* Module)
+	ForEachSubobject([this, OldSocket](ULockOnTargetExtensionProxy* Extension)
 		{
-			Module->OnSocketChanged(GetTargetComponent(), GetCapturedSocket(), OldSocket);
+			Extension->OnSocketChanged(GetTargetComponent(), GetCapturedSocket(), OldSocket);
 		});
 
 	OnSocketChanged.Broadcast(GetTargetComponent(), GetCapturedSocket(), OldSocket);
 }
 
+void ULockOnTargetComponent::NotifyTargetNotFound()
+{
+	LOT_BOOKMARK("TargetNotFound");
+	LOT_SCOPED_EVENT(NotifyTargetNotFound);
+
+	ForEachSubobject([this](ULockOnTargetExtensionProxy* Extension)
+		{
+			Extension->OnTargetNotFound(IsTargetLocked());
+		});
+
+	OnTargetNotFound.Broadcast(IsTargetLocked());
+}
+
 void ULockOnTargetComponent::ReceiveTargetException(ETargetExceptionType Exception)
 {
+	LOT_BOOKMARK("ReceiveTargetException");
+	LOT_SCOPED_EVENT(ReceiveTargetException);
+
 	const FTargetInfo Target = CurrentTargetInternal;
 
 	//Clear Target locally.
 	Server_UpdateTargetInfo_Implementation(FTargetInfo::NULL_TARGET);
 
-	if (HasAuthorityOverTarget())
+	if (!GetWorld()->bIsTearingDown && HasAuthorityOverTarget())
 	{
-		//@TODO: There is one extra RPC if the Target was destroyed as it replicates.
-		//But in case of relevancy, we need to send it.
-
 		if (IsValid(GetTargetHandler()))
 		{
 			GetTargetHandler()->HandleTargetException(Target, Exception);
@@ -410,37 +445,10 @@ void ULockOnTargetComponent::ReceiveTargetException(ETargetExceptionType Excepti
 }
 
 /*******************************************************************************************/
-/***************************************  Tick  ********************************************/
+/*******************************  LockOnTarget Extensions  *********************************/
 /*******************************************************************************************/
 
-void ULockOnTargetComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
-{
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	LOT_SCOPED_EVENT(Tick, Red);
-
-	if (IsTargetLocked())
-	{
-		TargetingDuration += DeltaTime;
-
-		if (HasAuthorityOverTarget())
-		{
-			ProcessAnalogInput(DeltaTime);
-			CheckTargetState(DeltaTime);
-		}
-	}
-
-	ForEachSubobject([DeltaTime](ULockOnTargetModuleProxy* Module)
-		{
-			Module->Update(DeltaTime);
-		});
-}
-
-/*******************************************************************************************/
-/*******************************  LockOnTarget Subobjects  *********************************/
-/*******************************************************************************************/
-
-void ULockOnTargetComponent::InitializeSubobject(ULockOnTargetModuleProxy* Subobject)
+void ULockOnTargetComponent::InitializeSubobject(ULockOnTargetExtensionProxy* Subobject)
 {
 	if (IsValid(Subobject) && HasBegunPlay())
 	{
@@ -453,7 +461,7 @@ void ULockOnTargetComponent::InitializeSubobject(ULockOnTargetModuleProxy* Subob
 	}
 }
 
-void ULockOnTargetComponent::DestroySubobject(ULockOnTargetModuleProxy* Subobject)
+void ULockOnTargetComponent::DestroySubobject(ULockOnTargetExtensionProxy* Subobject)
 {
 	if (IsValid(Subobject))
 	{
@@ -472,20 +480,20 @@ void ULockOnTargetComponent::DestroySubobject(ULockOnTargetModuleProxy* Subobjec
 	}
 }
 
-TArray<ULockOnTargetModuleProxy*, TInlineAllocator<8>> ULockOnTargetComponent::GetAllSubobjects() const
+TArray<ULockOnTargetExtensionProxy*, TInlineAllocator<8>> ULockOnTargetComponent::GetAllSubobjects() const
 {
-	TArray<ULockOnTargetModuleProxy*, TInlineAllocator<8>> Subobjects;
+	TArray<ULockOnTargetExtensionProxy*, TInlineAllocator<8>> Subobjects;
 
 	if (IsValid(GetTargetHandler()))
 	{
 		Subobjects.Add(GetTargetHandler());
 	}
 
-	for (auto& Module : Modules)
+	for (auto& Extension : Extensions)
 	{
-		if (IsValid(Module))
+		if (IsValid(Extension))
 		{
-			Subobjects.Add(Module);
+			Subobjects.Add(Extension);
 		}
 	}
 
@@ -515,41 +523,41 @@ void ULockOnTargetComponent::ClearTargetHandler()
 	}
 }
 
-ULockOnTargetModuleBase* ULockOnTargetComponent::FindModuleByClass(TSubclassOf<ULockOnTargetModuleBase> ModuleClass) const
+ULockOnTargetExtensionBase* ULockOnTargetComponent::FindExtensionByClass(TSubclassOf<ULockOnTargetExtensionBase> ExtensionClass) const
 {
-	auto* const Module = Modules.FindByPredicate([ModuleClass](const ULockOnTargetModuleBase* const Module)
+	auto* const Extension = Extensions.FindByPredicate([ExtensionClass](const ULockOnTargetExtensionBase* const Extension)
 		{
-			return IsValid(Module) && Module->IsA(ModuleClass);
+			return IsValid(Extension) && Extension->IsA(ExtensionClass);
 		});
 
-	return Module ? *Module : nullptr;
+	return Extension ? *Extension : nullptr;
 }
 
-ULockOnTargetModuleBase* ULockOnTargetComponent::AddModuleByClass(TSubclassOf<ULockOnTargetModuleBase> ModuleClass)
+ULockOnTargetExtensionBase* ULockOnTargetComponent::AddExtensionByClass(TSubclassOf<ULockOnTargetExtensionBase> ExtensionClass)
 {
-	ULockOnTargetModuleBase* const NewModule = NewObject<ULockOnTargetModuleBase>(this, ModuleClass);
+	ULockOnTargetExtensionBase* const NewExtension = NewObject<ULockOnTargetExtensionBase>(this, ExtensionClass);
 
-	if (NewModule)
+	if (NewExtension)
 	{
-		InitializeSubobject(NewModule);
-		Modules.Add(NewModule);
+		InitializeSubobject(NewExtension);
+		Extensions.Add(NewExtension);
 	}
 
-	return NewModule;
+	return NewExtension;
 }
 
-bool ULockOnTargetComponent::RemoveModuleByClass(TSubclassOf<ULockOnTargetModuleBase> ModuleClass)
+bool ULockOnTargetComponent::RemoveExtensionByClass(TSubclassOf<ULockOnTargetExtensionBase> ExtensionClass)
 {
-	if (ModuleClass.Get())
+	if (ExtensionClass.Get())
 	{
-		for (int32 i = 0; i < Modules.Num(); ++i)
+		for (int32 i = 0; i < Extensions.Num(); ++i)
 		{
-			ULockOnTargetModuleBase* const Module = Modules[i];
+			ULockOnTargetExtensionBase* const Extension = Extensions[i];
 
-			if (ensure(IsValid(Module)) && Module->IsA(ModuleClass))
+			if (ensure(IsValid(Extension)) && Extension->IsA(ExtensionClass))
 			{
-				DestroySubobject(Module);
-				Modules.RemoveAtSwap(i);
+				DestroySubobject(Extension);
+				Extensions.RemoveAtSwap(i);
 
 				return true;
 			}
@@ -559,14 +567,14 @@ bool ULockOnTargetComponent::RemoveModuleByClass(TSubclassOf<ULockOnTargetModule
 	return false;
 }
 
-void ULockOnTargetComponent::RemoveAllModules()
+void ULockOnTargetComponent::RemoveAllExtensions()
 {
-	for (ULockOnTargetModuleBase* const Module : Modules)
+	for (ULockOnTargetExtensionBase* const Extension : Extensions)
 	{
-		DestroySubobject(Module);
+		DestroySubobject(Extension);
 	}
 
-	Modules.Empty();
+	Extensions.Empty();
 }
 
 /*******************************************************************************************/
@@ -599,7 +607,7 @@ void ULockOnTargetComponent::ActivateInputDelay()
 
 void ULockOnTargetComponent::ProcessAnalogInput(float DeltaTime)
 {
-	LOT_SCOPED_EVENT(ProcessInput, Blue);
+	LOT_SCOPED_EVENT(ProcessInput);
 
 	check(IsTargetLocked() && HasAuthorityOverTarget());
 
@@ -616,9 +624,13 @@ void ULockOnTargetComponent::ProcessAnalogInput(float DeltaTime)
 
 	if (InputBuffer.SizeSquared() > FMath::Square(InputBufferThreshold))
 	{
-		bInputFrozen = bFreezeInputAfterSwitch;
+		bInputFrozen = bUseInputFreezing;
 		ActivateInputDelay(); //Prevent reliable buffer overflow.
-		TryFindTarget(InputBuffer);
+		{
+			FFindTargetRequestParams RequestParams;
+			RequestParams.PlayerInput = InputBuffer;
+			RequestFindTarget(RequestParams);
+		}
 		ClearInputBuffer();
 	}
 

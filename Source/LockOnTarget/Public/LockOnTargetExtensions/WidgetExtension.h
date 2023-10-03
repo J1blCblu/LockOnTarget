@@ -2,24 +2,24 @@
 
 #pragma once
 
-#include "LockOnTargetModuleBase.h"
-#include "WidgetModule.generated.h"
+#include "LockOnTargetExtensions/LockOnTargetExtensionBase.h"
+#include "WidgetExtension.generated.h"
 
 class UWidgetComponent;
 class UUserWidget;
 struct FStreamableHandle;
 
 /**
- * Displays a single widget attached to the captured Target socket.
+ * Visually indicates the captured Target by attaching a widget to the captured socket.
  */
-UCLASS(Blueprintable)
-class LOCKONTARGET_API UWidgetModule : public ULockOnTargetModuleBase
+UCLASS(Blueprintable, HideCategories = Tick)
+class LOCKONTARGET_API UWidgetExtension : public ULockOnTargetExtensionBase
 {
 	GENERATED_BODY()
 
 public:
 
-	UWidgetModule();
+	UWidgetExtension();
 
 public:
 
@@ -68,7 +68,7 @@ protected:
 
 protected: /** Overrides */
 
-	//ULockOnTargetModuleBase
+	//ULockOnTargetExtensionBase
 	virtual void Initialize(ULockOnTargetComponent* Instigator) override;
 	virtual void Deinitialize(ULockOnTargetComponent* Instigator) override;
 	virtual void OnTargetLocked(UTargetComponent* Target, FName Socket) override;

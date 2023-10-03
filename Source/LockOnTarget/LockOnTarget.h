@@ -29,8 +29,6 @@ public:
 		return FModuleManager::Get().IsModuleLoaded("LockOnTarget");
 	}
 
-	static FString GetPluginVersion();
-
 public:
 	/** IModuleInterface implementation */
 	virtual void StartupModule() override;

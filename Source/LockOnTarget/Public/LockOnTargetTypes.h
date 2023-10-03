@@ -28,7 +28,21 @@ public:
 	{
 	}
 
+	[[nodiscard]] UTargetComponent& operator*() const
+	{
+		check(TargetComponent);
+		return *TargetComponent;
+	}
+
+	[[nodiscard]] UTargetComponent* operator->() const
+	{
+		check(TargetComponent);
+		return TargetComponent;
+	}
+
 	bool NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess);
+
+private:
 
 	uint32 GetSocketIndex() const;
 
@@ -78,7 +92,7 @@ typename TEnableIf<TPointerIsConvertibleFromTo<T, const class UActorComponent>::
 {
 	T* ReturnComponent = nullptr;
 
-	if (IsValid(Actor) && Name != NAME_None)
+	if (IsValid(Actor) && !Name.IsNone())
 	{
 		TInlineComponentArray<T*> Components(Actor);
 

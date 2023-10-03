@@ -54,8 +54,8 @@ void FLockOnTargetEditorModule::RegisterStyles()
 	LockOnTargetStyleSet->Set("ClassThumbnail.LockOnTargetComponent",		new IMAGE_BRUSH(TEXT("SpectatorPawn_64x"), Icon64x));
 	LockOnTargetStyleSet->Set("ClassIcon.TargetComponent",					new IMAGE_BRUSH(TEXT("TargetPoint_16x"), Icon16x));
 	LockOnTargetStyleSet->Set("ClassThumbnail.TargetComponent",				new IMAGE_BRUSH(TEXT("TargetPoint_64x"), Icon64x));
-	LockOnTargetStyleSet->Set("ClassIcon.LockOnTargetModuleBase",			new IMAGE_BRUSH(TEXT("MassiveLODOverrideVolume_16x"), Icon16x));
-	LockOnTargetStyleSet->Set("ClassThumbnail.LockOnTargetModuleBase",		new IMAGE_BRUSH(TEXT("MassiveLODOverrideVolume_64x"), Icon64x));
+	LockOnTargetStyleSet->Set("ClassIcon.LockOnTargetExtensionBase",		new IMAGE_BRUSH(TEXT("MassiveLODOverrideVolume_16x"), Icon16x));
+	LockOnTargetStyleSet->Set("ClassThumbnail.LockOnTargetExtensionBase",	new IMAGE_BRUSH(TEXT("MassiveLODOverrideVolume_64x"), Icon64x));
 	LockOnTargetStyleSet->Set("ClassIcon.TargetHandlerBase",				new IMAGE_BRUSH(TEXT("PoseAsset_16x"), Icon16x));
 	LockOnTargetStyleSet->Set("ClassThumbnail.TargetHandlerBase",			new IMAGE_BRUSH(TEXT("PoseAsset_64x"), Icon64x));
 

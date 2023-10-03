@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "LockOnTargetTypes.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "TargetManager.generated.h"
 
@@ -23,29 +22,29 @@ public:
 	UTargetManager();
 	static UTargetManager& Get(UWorld& InWorld);
 
+private: /** Internal */
+
+	//All registered Targets.
+	TSet<UTargetComponent*> RegisteredTargets;
+
 public: 
 
 	//Target registration
 	bool RegisterTarget(UTargetComponent* Target);
 	bool UnregisterTarget(UTargetComponent* Target);
-	bool IsTargetRegistered(UTargetComponent * Target) const { return Targets.Contains(Target); }
+	bool IsTargetRegistered(UTargetComponent * Target) const { return RegisteredTargets.Contains(Target); }
 
-	//Get all registered Targets
+	//Gets all registered Targets
 	UFUNCTION(BlueprintCallable, Category = "LockOnTarget Manager")
-	const TSet<UTargetComponent*>& GetAllTargets() const { return Targets; }
+	const TSet<UTargetComponent*>& GetRegisteredTargets() const { return RegisteredTargets; }
 
-	//Get the number of registered Targets
+	//Gets the number of registered Targets
 	UFUNCTION(BlueprintCallable, Category = "LockOnTarget Manager")
-	int32 GetTargetsNum() const { return Targets.Num(); }
+	int32 GetRegisteredTargetsNum() const { return RegisteredTargets.Num(); }
 
 protected: /** Overrides */
 	
 	//UWorldSubsystem
 	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
 	virtual bool DoesSupportWorldType(const EWorldType::Type Type) const override;
-
-private: /** Internal */
-
-	//All registered Targets.
-	TSet<UTargetComponent*> Targets;
 };

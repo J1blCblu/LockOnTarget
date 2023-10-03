@@ -2,19 +2,60 @@
 
 #pragma once
 
-#include "LockOnTargetModuleBase.h"
+#include "LockOnTargetExtensions/LockOnTargetExtensionBase.h"
 #include "LockOnTargetTypes.h"
 #include "TargetHandlerBase.generated.h"
 
 /**
- * LockOnTargetComponent's special abstract module which is used to handle the Target.
+ * A set of optional params for the FindTarget() request.
+ */
+USTRUCT(BlueprintType)
+struct LOCKONTARGET_API FFindTargetRequestParams
+{
+	GENERATED_BODY()
+
+public:
+	
+	/** Whether to generate a detailed response. May have a significant impact on performance. */
+	UPROPERTY(BlueprintReadWrite, Category = "Request Params")
+	bool bGenerateDetailedResponse = false;
+
+	/** Optional player input. */
+	UPROPERTY(BlueprintReadWrite, Category = "Request Params")
+	FVector2D PlayerInput = FVector2D::ZeroVector;
+
+	/** An optional payload object passed along with the request. Might be useful for custom implementations. */
+	UPROPERTY(BlueprintReadWrite, Category = "Request Params")
+	TObjectPtr<UObject> Payload = nullptr;
+};
+
+/**
+ * A set of params returned by the FindTarget() request.
+ */
+USTRUCT(BlueprintType)
+struct LOCKONTARGET_API FFindTargetRequestResponse
+{
+	GENERATED_BODY()
+
+public:
+
+	/** The actual Target found by the FindTarget() request. May be NULL_TARGET. */
+	UPROPERTY(BlueprintReadWrite, Category = "Request Params")
+	FTargetInfo Target = FTargetInfo::NULL_TARGET;
+
+	/** An optional payload object passed along with the response. May be useful for custom implementations. */
+	UPROPERTY(BlueprintReadWrite, Category = "Request Params")
+	TObjectPtr<UObject> Payload = nullptr;
+};
+
+/**
+ * Special abstract LockOnTargetExtension which is used to handle the Target.
  * Responsible for finding and maintaining the Target.
  * 
- * FindTarget() must be overridden.
- * CheckTargetState() and HandleTargetException() are optional.
+ * It's recommended to override FindTarget(), CheckTargetState() and HandleTargetException().
  */
 UCLASS(Blueprintable, ClassGroup = (LockOnTarget), Abstract, DefaultToInstanced, EditInlineNew, HideDropdown)
-class LOCKONTARGET_API UTargetHandlerBase : public ULockOnTargetModuleProxy
+class LOCKONTARGET_API UTargetHandlerBase : public ULockOnTargetExtensionProxy
 {
 	GENERATED_BODY()
 
@@ -27,11 +68,11 @@ public: /** Target Handler Interface */
 	/**
 	 * Finds and returns a Target to be captured by LockOnTargetComponent.
 	 * 
-	 * @param PlayerInput - Input from the player. May be empty.
-	 * @return - Target to be captured or NULL_TARGET.
+	 * @param	RequestParams	A set of optional params for the request.
+	 * @return	Target to be captured or NULL_TARGET.
 	 */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "LockOnTarget|Target Handler Base")
-	FTargetInfo FindTarget(FVector2D PlayerInput = FVector2D::ZeroVector);
+	FFindTargetRequestResponse FindTarget(const FFindTargetRequestParams& RequestParams = FFindTargetRequestParams());
 
 	/**
 	 * (Optional) Checks the Target state between updates.
@@ -53,17 +94,7 @@ public: /** Target Handler Interface */
 
 private: /** Internal */
 
-	virtual FTargetInfo FindTarget_Implementation(FVector2D PlayerInput);
+	virtual FFindTargetRequestResponse FindTarget_Implementation(const FFindTargetRequestParams& RequestParams);
 	virtual void CheckTargetState_Implementation(const FTargetInfo& Target, float DeltaTime);
 	virtual void HandleTargetException_Implementation(const FTargetInfo& Target, ETargetExceptionType Exception);
-
-public: /** Deprecated */
-
-	/** (Optional) Target is removed from the level. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "LockOnTarget|Target Handler Base", meta = (DeprecatedFunction, DeprecationMessage="HandleTargetException() should be used."))
-	void HandleTargetEndPlay(UTargetComponent* Target);
-
-	/** (Optional) Target has removed the previously captured Socket. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "LockOnTarget|Target Handler Base", meta = (DeprecatedFunction, DeprecationMessage="HandleTargetException() should be used."))
-	void HandleSocketRemoval(FName RemovedSocket);
 };

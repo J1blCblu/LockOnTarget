@@ -1,6 +1,6 @@
 // Copyright 2022-2023 Ivan Baktenkov. All Rights Reserved.
 
-#include "DefaultModules/TargetPreviewModule.h"
+#include "LockOnTargetExtensions/TargetPreviewExtension.h"
 #include "LockOnTargetComponent.h"
 #include "TargetComponent.h"
 #include "TargetHandlers/TargetHandlerBase.h"
@@ -11,22 +11,26 @@
 #include "UObject/SoftObjectPath.h"
 #include "GameFramework/PlayerController.h"
 
-UTargetPreviewModule::UTargetPreviewModule()
+UTargetPreviewExtension::UTargetPreviewExtension()
 	: WidgetClass(FSoftClassPath(FString(TEXT("/Script/UMGEditor.WidgetBlueprint'/LockOnTarget/WBP_PreviewTarget.WBP_PreviewTarget_C'"))))
 	, UpdateRate(0.1f)
 	, Widget(nullptr)
-	, bIsPreviewActive(true)
 	, bWidgetIsInitialized(false)
 	, UpdateTimer(0.f)
 {
-	//Do something.
+	ExtensionTick.TickGroup = TG_PostPhysics;
+	ExtensionTick.bCanEverTick = true;
+	ExtensionTick.bStartWithTickEnabled = true;
+	ExtensionTick.bAllowTickOnDedicatedServer = false;
 }
 
-void UTargetPreviewModule::Initialize(ULockOnTargetComponent* Instigator)
+void UTargetPreviewExtension::Initialize(ULockOnTargetComponent* Instigator)
 {
 	Super::Initialize(Instigator);
 
-	if ((Widget = NewObject<UWidgetComponent>(this, MakeUniqueObjectName(this, UWidgetComponent::StaticClass(), TEXT("LockOnTarget_TargetPreview_Widget")), RF_Transient)))
+	Widget = NewObject<UWidgetComponent>(this, MakeUniqueObjectName(this, UWidgetComponent::StaticClass(), TEXT("LockOnTarget_TargetPreview_Widget")), RF_Transient);
+
+	if (Widget)
 	{
 		Widget->RegisterComponent();
 		Widget->SetWidgetSpace(EWidgetSpace::Screen);
@@ -50,7 +54,7 @@ void UTargetPreviewModule::Initialize(ULockOnTargetComponent* Instigator)
 	}
 }
 
-void UTargetPreviewModule::OnWidgetClassLoaded()
+void UTargetPreviewExtension::OnWidgetClassLoaded()
 {
 	if (IsWidgetInitialized() && StreamableHandle.IsValid() && StreamableHandle->HasLoadCompleted())
 	{
@@ -59,7 +63,7 @@ void UTargetPreviewModule::OnWidgetClassLoaded()
 	}
 }
 
-void UTargetPreviewModule::Deinitialize(ULockOnTargetComponent* Instigator)
+void UTargetPreviewExtension::Deinitialize(ULockOnTargetComponent* Instigator)
 {
 	SetPreviewActive(false);
 
@@ -78,30 +82,30 @@ void UTargetPreviewModule::Deinitialize(ULockOnTargetComponent* Instigator)
 	Super::Deinitialize(Instigator);
 }
 
-bool UTargetPreviewModule::IsWidgetInitialized() const
+bool UTargetPreviewExtension::IsWidgetInitialized() const
 {
 	return bWidgetIsInitialized && ensureMsgf(IsValid(Widget), TEXT("Widget was initialized but is invalid. Maybe it was removed manually."));
 }
 
-void UTargetPreviewModule::OnTargetLocked(UTargetComponent* Target, FName Socket)
+void UTargetPreviewExtension::OnTargetLocked(UTargetComponent* Target, FName Socket)
 {
 	Super::OnTargetLocked(Target, Socket);
 	SetPreviewActive(false);
 }
 
-void UTargetPreviewModule::OnTargetUnlocked(UTargetComponent* UnlockedTarget, FName Socket)
+void UTargetPreviewExtension::OnTargetUnlocked(UTargetComponent* UnlockedTarget, FName Socket)
 {
 	Super::OnTargetUnlocked(UnlockedTarget, Socket);
 	SetPreviewActive(true);
 }
 
-void UTargetPreviewModule::SetPreviewActive(bool bInActive)
+void UTargetPreviewExtension::SetPreviewActive(bool bInActive)
 {
 	if (IsPreviewActive() != bInActive)
 	{
 		if (!bInActive || !GetLockOnTargetComponent()->IsTargetLocked())
 		{
-			bIsPreviewActive = bInActive;
+			SetTickEnabled(bInActive);
 
 			if (!IsPreviewActive())
 			{
@@ -112,11 +116,13 @@ void UTargetPreviewModule::SetPreviewActive(bool bInActive)
 	}
 }
 
-void UTargetPreviewModule::Update(float DeltaTime)
+void UTargetPreviewExtension::Update(float DeltaTime)
 {
 	Super::Update(DeltaTime);
 
-	if (IsPreviewActive() && IsWidgetInitialized() && GetController() && GetController()->IsLocalController() && GetLockOnTargetComponent()->CanCaptureTarget())
+	const AController* const Controller = GetInstigatorController();
+
+	if (IsWidgetInitialized() && Controller && Controller->IsLocalController() && GetLockOnTargetComponent()->CanCaptureTarget())
 	{
 		UpdateTimer += DeltaTime;
 
@@ -128,13 +134,14 @@ void UTargetPreviewModule::Update(float DeltaTime)
 	}
 }
 
-void UTargetPreviewModule::UpdateTargetPreview()
+void UTargetPreviewExtension::UpdateTargetPreview()
 {
 	const ULockOnTargetComponent* const Owner = GetLockOnTargetComponent();
 
 	if (UTargetHandlerBase* const TargetHandler = Owner->GetTargetHandler())
 	{
-		const FTargetInfo Preview = TargetHandler->FindTarget();
+		const FFindTargetRequestResponse Response = TargetHandler->FindTarget();
+		const FTargetInfo Preview = Response.Target;
 
 		if (Owner->IsTargetValid(Preview.TargetComponent))
 		{
@@ -151,11 +158,11 @@ void UTargetPreviewModule::UpdateTargetPreview()
 	}
 	else
 	{
-		LOG_WARNING("TargetPreviewModule failed to find TargetHandler in %s", *GetFullNameSafe(Owner));
+		LOG_WARNING("TargetPreviewExtension failed to find TargetHandler in %s", *GetFullNameSafe(Owner));
 	}
 }
 
-void UTargetPreviewModule::BeginTargetPreview(const FTargetInfo& Target)
+void UTargetPreviewExtension::BeginTargetPreview(const FTargetInfo& Target)
 {
 	PreviewTarget = Target;
 
@@ -166,13 +173,13 @@ void UTargetPreviewModule::BeginTargetPreview(const FTargetInfo& Target)
 			Widget->SetOwnerPlayer(PC->GetLocalPlayer());
 		}
 
-		Widget->AttachToComponent(Target.TargetComponent->GetTrackedMeshComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, Target.Socket);
+		Widget->AttachToComponent(Target.TargetComponent->GetAssociatedComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, Target.Socket);
 		Widget->SetVisibility(true);
 		Widget->SetRelativeLocation(Target.TargetComponent->WidgetRelativeOffset);
 	}
 }
 
-void UTargetPreviewModule::StopTargetPreview(const FTargetInfo& Target)
+void UTargetPreviewExtension::StopTargetPreview(const FTargetInfo& Target)
 {
 	if (IsPreviewTargetValid())
 	{

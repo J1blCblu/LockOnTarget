@@ -17,7 +17,7 @@ UTargetManager& UTargetManager::Get(UWorld& InWorld)
 void UTargetManager::OnWorldBeginPlay(UWorld& InWorld)
 {
 	Super::OnWorldBeginPlay(InWorld);
-	Targets.Reserve(20);
+	RegisteredTargets.Reserve(30);
 }
 
 bool UTargetManager::DoesSupportWorldType(const EWorldType::Type Type) const
@@ -31,7 +31,7 @@ bool UTargetManager::RegisterTarget(UTargetComponent* Target)
 
 	if (Target)
 	{
-		Targets.Add(Target, &bHasAlreadyBeen);
+		RegisteredTargets.Add(Target, &bHasAlreadyBeen);
 	}
 
 	return !bHasAlreadyBeen;
@@ -39,5 +39,5 @@ bool UTargetManager::RegisterTarget(UTargetComponent* Target)
 
 bool UTargetManager::UnregisterTarget(UTargetComponent* Target)
 {
-	return Targets.Remove(Target) > 0;
+	return RegisteredTargets.Remove(Target) > 0;
 }

@@ -9,11 +9,10 @@ UTargetHandlerBase::UTargetHandlerBase()
 	//Do something.
 }
 
-FTargetInfo UTargetHandlerBase::FindTarget_Implementation(FVector2D PlayerInput)
+FFindTargetRequestResponse UTargetHandlerBase::FindTarget_Implementation(const FFindTargetRequestParams& RequestParams)
 {
-	LOG_ERROR("Unimplemented method is called. FindTarget() must be overriden.");
-	unimplemented();
-	return FTargetInfo::NULL_TARGET;
+	LOG_WARNING("Unimplemented method is called. NULL_TARGET is returned.");
+	return FFindTargetRequestResponse();
 }
 
 void UTargetHandlerBase::CheckTargetState_Implementation(const FTargetInfo& Target, float DeltaTime)
@@ -28,5 +27,6 @@ void UTargetHandlerBase::HandleTargetException_Implementation(const FTargetInfo&
 
 bool UTargetHandlerBase::IsTargetValid(const UTargetComponent* Target) const
 {
-	return GetLockOnTargetComponent() ? GetLockOnTargetComponent()->IsTargetValid(Target) : false;
+	check(GetLockOnTargetComponent());
+	return GetLockOnTargetComponent()->IsTargetValid(Target);
 }

@@ -5,22 +5,16 @@
 
 #include "Interfaces/IPluginManager.h"
 #include "PluginDescriptor.h"
-#include "Engine/StreamableManager.h"
+
+IMPLEMENT_MODULE(FLockOnTargetModule, LockOnTarget);
 
 DEFINE_LOG_CATEGORY(LogLockOnTarget);
-IMPLEMENT_MODULE(FLockOnTargetModule, LockOnTarget);
+
+#if LOT_TRACE_ENABLED
+UE_TRACE_CHANNEL_DEFINE(LockOnTargetChannel);
+#endif
 
 void FLockOnTargetModule::StartupModule()
 {
-	LOG("LockOnTarget(v%s) module startup.", *GetPluginVersion());
-
-#if LOT_INSIGHTS
-	LOG("LockOnTarget uses Unreal Insights. The LOT_ prefix can be used for sorting.");
-#endif
-}
-
-FString FLockOnTargetModule::GetPluginVersion()
-{
-	TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin("LockOnTarget");
-	return Plugin.IsValid() ? Plugin->GetDescriptor().VersionName : FString(TEXT("unavailable"));
+	LOG("LockOnTarget(v%s): The LockOnTarget channel can be used to enable profiling. Traces can be sorted by the LOT_ prefix.", *IPluginManager::Get().FindPlugin("LockOnTarget")->GetDescriptor().VersionName);
 }
