@@ -16,6 +16,7 @@ class SEditableTextBox;
 class SWidget;
 class SSocketSelector;
 class AActor;
+class USceneComponent;
 
 /** Ref: CameraDetails. */
 class FTargetComponentDetails final : public IDetailCustomization
