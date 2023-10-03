@@ -7,21 +7,21 @@
 /** Modules */
 
 template<typename T>
-constexpr bool TIsModule_V = TPointerIsConvertibleFromTo<T, ULockOnTargetModuleBase>::Value;
+constexpr bool TIsModule_V = TPointerIsConvertibleFromTo<T, class ULockOnTargetModuleBase>::Value;
 
 template<typename T>
-constexpr bool TIsRotationModule_V = TPointerIsConvertibleFromTo<T, URotationModule>::Value;
+constexpr bool TIsRotationModule_V = TPointerIsConvertibleFromTo<T, class URotationModule>::Value;
 
 template<typename T>
-constexpr bool TIsTargetHandler_V = TPointerIsConvertibleFromTo<T, UTargetHandlerBase>::Value;
+constexpr bool TIsTargetHandler_V = TPointerIsConvertibleFromTo<T, class UTargetHandlerBase>::Value;
 
 /** Misc */
 
 template<typename T>
-constexpr bool TIsComponentPointer_V = TPointerIsConvertibleFromTo<T, UActorComponent>::Value;
+constexpr bool TIsComponentPointer_V = TPointerIsConvertibleFromTo<T, class UActorComponent>::Value;
 
 template<typename T>
-typename TEnableIf<TIsComponentPointer_V<T>, T>::Type* FindComponentByName(AActor* Actor, FName Name)
+typename TEnableIf<TIsComponentPointer_V<T>, T>::Type* FindComponentByName(class AActor* Actor, FName Name)
 {
 	T* ReturnComponent = nullptr;
 
