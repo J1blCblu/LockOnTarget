@@ -8,7 +8,7 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
-#include "SceneOutliner/Private/SSocketChooser.h"
+#include "SSocketChooser.h"
 
 #include "Styling/AppStyle.h"
 #include "Styling/SlateColor.h"

@@ -10,7 +10,7 @@
 	"DocsURL": "https://github.com/J1blCblu/LockOnTarget/wiki",
 	"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/content/d58106fca28446ec88caad16c5a35fe8",
 	"SupportURL": "https://github.com/J1blCblu/LockOnTarget/issues",
-	"EngineVersion": "5.2.0",
+	"EngineVersion": "5.3.0",
 	"CanContainContent": true,
 	"Installed": true,
 	"Modules": [
