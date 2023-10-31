@@ -176,7 +176,7 @@ public: /** View Info */
  * To retrieve a detailed response, set FFindTargetRequestParams::bGenerateDetailedResponse to true.
  * Cast the payload object from the response to the UWeightedTargetHandlerDetailedResponse.
  * 
- * To enable profiling through Unreal Insights, add the -trace=lockontarget channel.
+ * To enable profiling through Unreal Insights, add the -trace=default,lockontarget channel.
  *
  * @see UTargetHandlerBase, UWeightedTargetHandlerDetailedResponse.
  */ 
@@ -228,22 +228,33 @@ public: /** Solver */
 	UPROPERTY(EditDefaultsOnly, Category = "Solver", meta = (ClampMin = 10.f, ClampMax = 180.f, Units = "deg"))
 	float DeltaAngleMaxFactor;
 
-	/** The minimum factor value that will be applied to the final weight. Eliminates perfect hits with 0 weight. */
+	/** The minimum factor value that will be applied to the final weight. Eliminates perfect hits with 0 factor. */
 	UPROPERTY(EditDefaultsOnly, Category = "Solver", meta = (ClampMin = 0.f, ClampMax = 1.f, Units = "x"))
 	float MinimumFactorThreshold;
 
 public: /** Distance */
 
-	/** Target must be within a certain distance range. UTargetComponent::CaptureRadius. */
+	/** Target must be within a certain distance range. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Distance")
 	bool bDistanceCheck;
 
+	/**
+	 * Radius in which the Target can be captured.
+	 * @note Can be customized per Target.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Distance", meta = (EditCondition = "bDistanceCheck", EditConditionHides, ClampMin = 100.f, Units = "cm"))
+	float DefaultCaptureRadius;
+
+	/** Radius [CaptureRadius * LostRadiusScale] in which the captured Target should be released. Helps avoid immediate release at the capture boundary. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Distance", meta = (EditCondition = "bDistanceCheck", EditConditionHides, ClampMin = 1.f, Units = "x"))
+	float LostRadiusScale;
+
 	/** Near clip radius. Rejects closer Targets. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Distance", meta = (EditCondition = "bDistanceCheck", EditConditionHides, ClampMin = 0.f, Units = "cm"))
-	float MinimumRadius;
+	float NearClipRadius;
 
-	/** Adjusts CaptureRadius of the Target. Useful for overall scaling. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Distance", meta = (ClampMin = 0.f, Units = "x", EditCondition = "bDistanceCheck", EditConditionHides))
+	/** Adjusts the final CaptureRadius. Useful for overall scaling. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Distance", meta = (EditCondition = "bDistanceCheck", EditConditionHides, ClampMin = 0.f, Units = "x"))
 	float CaptureRadiusScale;
 
 public: /** View */
@@ -324,7 +335,7 @@ protected: /** Finding */
 	float CalculateTargetWeight(const FFindTargetContext& Context, const FTargetContext& TargetContext) const;
 	virtual float CalculateTargetWeight_Implementation(const FFindTargetContext& Context, const FTargetContext& TargetContext) const;
 
-	/** Finds the first Target that passes the remaining checks */
+	/** Finds the first Target that passes the remaining checks. */
 	FFindTargetRequestResponse PerformSecondarySamplingPass(FFindTargetContext& Context, TArray<FTargetContext>& InTargetsData);
 
 	/** Whether to skip the Target during the secondary pass. */
@@ -355,6 +366,9 @@ protected: /** Helpers */
 
 	/** Calculates the delta angle 2D between the player's input and the direction towards the Target. */
 	void CalcDeltaAngle2D(const FFindTargetContext& Context, FTargetContext& OutTargetContext) const;
+
+	/** Returns the capture radius for the Target. */
+	float GetTargetCaptureRadius(const UTargetComponent* InTarget) const;
 
 	/** Whether the Target is on the screen. */
 	bool IsTargetOnScreen(const FFindTargetContext& Context, const FTargetContext& TargetContext) const;

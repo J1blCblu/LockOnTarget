@@ -10,11 +10,9 @@
  * FLockOnTargetExtensionTickFunction
  ********************************************************************/
 
-LOT_DEFINE_CUSTOM_SCOPED_EVENT_WITH_META(ExtensionUpdate, UE::Trace::WideString, ExtensionName);
-
 void FLockOnTargetExtensionTickFunction::ExecuteTick(float DeltaTime, ELevelTick TickType, ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 {
-	LOT_CUSTOM_SCOPED_EVENT_WITH_META(ExtensionUpdate, ExtensionName, IsValid(TargetExtension) ? *TargetExtension->GetClass()->GetName() : TEXT("InvalidExtension"));
+	LOT_SCOPED_EVENT(ExtensionUpdate);
 	
 	if (IsValid(TargetExtension))
 	{

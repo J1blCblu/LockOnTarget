@@ -43,12 +43,12 @@ class LOCKONTARGET_API UTargetComponent : public UActorComponent
 
 public:
 
+	//@TODO: Display a warning next to invalid sockets after changing AssociatedComponentName in details. Or maybe clear directly.
+
 	UTargetComponent();
 	friend class FTargetComponentDetails; //Details customization.
 	static constexpr uint32 NumInlinedInvaders = 3;
 	UTargetManager& GetTargetManager() const;
-
-	//@TODO: Display a warning next to invalid sockets after changing AssociatedComponentName in details. Or maybe clear directly.
 
 private: /** General */
 
@@ -66,13 +66,13 @@ private: /** General */
 
 public: /** General */
 
-	/** Radius in which the Target can be captured. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "General", meta = (ClampMin = 50.f, Units = "cm"))
-	float CaptureRadius;
+	/** Whether to use the default capture radius or custom. */
+	UPROPERTY(EditAnywhere, Category = "General", meta = (InlineEditConditionToggle))
+	bool bForceCustomCaptureRadius;
 
-	/** LostRadius (CaptureRadius + LostOffsetRadius) in which the captured Target should be released. Helps avoid immediate release at the capture boundary. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "General", meta = (ClampMin = 0.f, Units = "cm"))
-	float LostOffsetRadius;
+	/** Radius in which the Target can be captured. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "General", meta = (EditCondition = "bForceCustomCaptureRadius", ClampMin = 100.f, Units = "cm"))
+	float CustomCaptureRadius;
 
 	/** 0 - higher priority, 1 - lower priority. Some animals and bosses may need lower and higher priority respectively. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "General", meta = (ClampMin = 0.f, ClampMax = 1.f, Units = "x"))
@@ -88,7 +88,7 @@ public: /** Focus Point */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Focus Point", meta = (EditCondition = "FocusPointType == ETargetFocusPointType::CustomSocket", EditConditionHides))
 	FName FocusPointCustomSocket;
 
-	/** FocusPoint offset in global space. */
+	/** FocusPoint offset in actor space. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Focus Point")
 	FVector FocusPointRelativeOffset;
 
@@ -148,7 +148,7 @@ public: /** Target State */
 	UFUNCTION(BlueprintPure, Category = "Target")
 	int32 GetInvadersNum() const { return Invaders.Num(); }
 
-public: /** Sockets */
+public: /** Associated Component */
 
 	/** Returns the associated component. */
 	UFUNCTION(BlueprintPure, Category = "Target|Mesh")
@@ -160,6 +160,8 @@ public: /** Sockets */
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Target|Mesh")
 	void SetAssociatedComponent(USceneComponent* InAssociatedComponent);
+
+public: /** Sockets */
 
 	/** Does the given Socket exist in the Target. */
 	UFUNCTION(BlueprintPure, Category = "Target")
@@ -173,12 +175,20 @@ public: /** Sockets */
 	UFUNCTION(BlueprintPure, Category = "Target")
 	FVector GetSocketLocation(FName Socket) const;
 
+	/** Updates the default Socket in 0 index. */
+	UFUNCTION(BlueprintCallable, Category = "Target", meta = (AutoCreateRefTerm = "Socket"))
+	void SetDefaultSocket(FName Socket = NAME_None);
+
+	/** Updates the default Socket in 0 index. */
+	UFUNCTION(BlueprintCallable, Category = "Target", meta = (AutoCreateRefTerm = "Socket"))
+	FName GetDefaultSocket() const { return Sockets.IsEmpty() ? NAME_None : Sockets[0]; }
+
 	/** Adds a Socket at runtime. */
-	UFUNCTION(BlueprintCallable, Category = "TargetingHelper", meta = (AutoCreateRefTerm = "Socket"))
+	UFUNCTION(BlueprintCallable, Category = "Target", meta = (AutoCreateRefTerm = "Socket"))
 	bool AddSocket(FName Socket = NAME_None);
 
 	/** Removes a Socket at runtime. */
-	UFUNCTION(BlueprintCallable, Category = "TargetingHelper", meta = (AutoCreateRefTerm = "Socket"))
+	UFUNCTION(BlueprintCallable, Category = "Target", meta = (AutoCreateRefTerm = "Socket"))
 	bool RemoveSocket(FName Socket = NAME_None);
 
 public: /** Focus Point */

@@ -23,7 +23,7 @@ DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_ThreeParams(FOnSocketChanged, ULockOnT
 DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_OneParam(FOnTargetNotFound, ULockOnTargetComponent, OnTargetNotFound, bool, bIsTargetLocked);
 
 /**
- *	LockOnTargetComponent gives the locally controlled AActor the ability to find and store the Target along with the Socket.
+ *	LockOnTargetComponent gives a locally controlled APawn the ability to find and store a Target.
  *	The Target can be controlled directly by the component or through an optional TargetHandler.
  *	Independent logic such as widget attachment, camera focusing and etc. is encapsulated inside LockOnTargetExtensions.
  * 
@@ -36,6 +36,8 @@ class LOCKONTARGET_API ULockOnTargetComponent : public UActorComponent
 
 public:
 
+	//@TODO: Rework input processing to support different update rates. Look at GF/PawnMovementComponent.h.
+
 	ULockOnTargetComponent();
 	friend class FGameplayDebuggerCategory_LockOnTarget; //Gameplay Debugger
 	
@@ -46,7 +48,7 @@ private: /** Core Config */
 	bool bCanCaptureTarget;
 
 	/** Special extension that handles the Target. Get/SetTargetHandler(). */
-	UPROPERTY(Instanced, EditDefaultsOnly, Category = "Default Settings", meta = (NoResetToDefault))
+	UPROPERTY(Instanced, EditDefaultsOnly, Category = "Default Settings")
 	TObjectPtr<UTargetHandlerBase> TargetHandlerImplementation;
 	
 	/** Set of customizable independent features. Add/RemoveExtensionByClass(). */
@@ -124,19 +126,19 @@ public: /** Polls */
 	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Polls")
 	bool IsTargetLocked() const { return bIsTargetLocked; }
 
-	/** Gets the currently locked TargetComponent, if exists, otherwise nullptr. */
+	/** Returns the currently locked TargetComponent, if exists, otherwise nullptr. */
 	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Polls")
 	UTargetComponent* GetTargetComponent() const { return IsTargetLocked() ? CurrentTargetInternal.TargetComponent : nullptr; }
 
-	/** Gets the captured socket, if exists, otherwise NAME_None. */
+	/** Returns the captured socket, if exists, otherwise NAME_None. */
 	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Polls")
 	FName GetCapturedSocket() const { return IsTargetLocked() ? CurrentTargetInternal.Socket : NAME_None; }
 
-	/** Gets the currently locked AActor, if exists, otherwise nullptr. */
+	/** Returns the currently locked AActor, if exists, otherwise nullptr. */
 	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Polls")
 	AActor* GetTargetActor() const;
 
-	/** Gets the targeting duration in seconds. */
+	/** Returns the targeting duration in seconds. */
 	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Polls")
 	float GetTargetingDuration() const { return TargetingDuration; }
 
@@ -263,9 +265,16 @@ protected: /** Input */
 
 public: /** TargetHandler */
 
-	/** Gets the current TargetHandler. */
+	/** Returns the current TargetHandler. */
 	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Target Handler")
 	UTargetHandlerBase* GetTargetHandler() const { return TargetHandlerImplementation; }
+
+	/**
+	 * Updates the default TargetHandlerImplementation.
+	 * 
+	 * @warning Should only be used during construction! At runtime, use SetTargetHandlerByClass().
+	 */
+	void SetDefaultTargetHandler(UTargetHandlerBase* InDefaultTargetHandler);
 
 	/** Creates and returns a new TargetHandler from class. */
 	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Target Handler", meta = (DeterminesOutputType = TargetHandlerClass))
@@ -278,13 +287,13 @@ public: /** TargetHandler */
 		return static_cast<Class*>(SetTargetHandlerByClass(Class::StaticClass()));
 	}
 
-	/** Destroys TargetHandler. */
+	/** Destroys the current TargetHandler. */
 	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Target Handler")
 	void ClearTargetHandler();
 
 public: /** Extensions */
 
-	/** Gets all extensions. */
+	/** Returns all extensions. */
 	UFUNCTION(BlueprintPure, Category = "LockOnTargetComponent|Extensions")
 	const TArray<ULockOnTargetExtensionBase*>& GetAllExtensions() const { return Extensions; }
 
@@ -298,6 +307,13 @@ public: /** Extensions */
 		static_assert(TPointerIsConvertibleFromTo<Class, const ULockOnTargetExtensionBase>::Value, "Invalid template param.");
 		return static_cast<Class*>(FindExtensionByClass(Class::StaticClass()));
 	}
+
+	/**
+	 * Adds a new default extension to the DefaultExtensions.
+	 * 
+	 * @warning Should only be used during construction! At runtime, use SetTargetHandlerByClass().
+	 */
+	void AddDefaultExtension(ULockOnTargetExtensionBase* InDefaultExtension);
 
 	/** Creates and returns a new extension by class. Complexity amortized constant. */
 	UFUNCTION(BlueprintCallable, Category = "LockOnTargetComponent|Extensions", meta = (DeterminesOutputType = ExtensionClass))

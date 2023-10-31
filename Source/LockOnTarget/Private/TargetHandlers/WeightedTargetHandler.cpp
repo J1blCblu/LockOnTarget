@@ -19,11 +19,13 @@ UWeightedTargetHandler::UWeightedTargetHandler()
 	, PlayerInputWeight(0.1f)
 	, TargetPriorityWeight(0.25f)
 	, PureDefaultWeight(1000.f)
-	, DistanceMaxFactor(2350.f)
+	, DistanceMaxFactor(2420.f)
 	, DeltaAngleMaxFactor(45.f)
 	, MinimumFactorThreshold(0.035f)
 	, bDistanceCheck(true)
-	, MinimumRadius(150.f)
+	, DefaultCaptureRadius(2200.f)
+	, LostRadiusScale(1.1f)
+	, NearClipRadius(150.f)
 	, CaptureRadiusScale(1.f)
 	, ViewConeAngle(42.f)
 	, ViewPitchOffset(10.f)
@@ -62,9 +64,9 @@ void UWeightedTargetHandler::CheckTargetState_Implementation(const FTargetInfo& 
 	if (bDistanceCheck)
 	{
 		const float DistanceSq = (TargetActor->GetActorLocation() - ViewLocation).SizeSquared();
-		const float LostRadius = Target->CaptureRadius * CaptureRadiusScale + Target->LostOffsetRadius;
+		const float TargetLostRadius = GetTargetCaptureRadius(Target.TargetComponent) * LostRadiusScale;
 
-		if (DistanceSq > FMath::Square(LostRadius))
+		if (DistanceSq > FMath::Square(TargetLostRadius))
 		{
 			HandleTargetUnlock(ETargetUnlockReason::DistanceFailure);
 			return;
@@ -170,7 +172,9 @@ void UWeightedTargetHandler::PerformPrimarySamplingPass(FFindTargetContext& Cont
 			FTargetContext TargetContext = CreateTargetContext(Context, CurrentTarget);
 
 			//Check if in view cone.
-			if (FMath::RadiansToDegrees(FMath::Acos(Context.ViewRotationMatrix.GetScaledAxis(EAxis::X) | TargetContext.Direction)) > ViewConeAngle)
+			const float DeltaConeAngle = FMath::RadiansToDegrees(FMath::Acos(Context.ViewRotationMatrix.GetScaledAxis(EAxis::X) | TargetContext.Direction));
+
+			if (DeltaConeAngle > ViewConeAngle)
 			{
 				continue;
 			}
@@ -207,10 +211,11 @@ bool UWeightedTargetHandler::ShouldSkipTargetPrimaryPass(const FFindTargetContex
 
 	if (bDistanceCheck)
 	{
+		//It'd be more correct to check the distance per socket, but this is faster.
 		const float DistanceSq = (Context.ViewLocation - TargetActor->GetActorLocation()).SizeSquared();
-		const float MaxRadius = Target->CaptureRadius * CaptureRadiusScale;
+		const float TargetCaptureRadius = GetTargetCaptureRadius(Target);
 
-		if (DistanceSq > FMath::Square(MaxRadius) || DistanceSq < FMath::Square(MinimumRadius))
+		if (DistanceSq > FMath::Square(TargetCaptureRadius) || DistanceSq < FMath::Square(NearClipRadius))
 		{
 			return true;
 		}
@@ -229,37 +234,42 @@ void UWeightedTargetHandler::PerformSolverPass(FFindTargetContext& Context, TArr
 
 float UWeightedTargetHandler::CalculateTargetWeight_Implementation(const FFindTargetContext& Context, const FTargetContext& TargetContext) const
 {
-	const float WeightNormalizer = 1.f / (DistanceWeight + DeltaAngleWeight + PlayerInputWeight + TargetPriorityWeight);
-
 	float OutWeight = 0.f;
 
-	auto ApplyFactor = [&OutWeight, WeightNormalizer, this](float Weight, float Ratio)
+	const float WeightSum = DistanceWeight + DeltaAngleWeight + PlayerInputWeight + TargetPriorityWeight;
+
+	if (!FMath::IsNearlyZero(WeightSum))
+	{
+		const float WeightNormalizer = 1.f / WeightSum;
+
+		auto ApplyFactor = [&OutWeight, WeightNormalizer, this](float Weight, float Ratio)
+			{
+				const float Factor = FMath::Clamp(Ratio, MinimumFactorThreshold, 1.f);
+				OutWeight += PureDefaultWeight * Weight * WeightNormalizer * Factor;
+			};
+
+		if (DistanceWeight > UE_KINDA_SMALL_NUMBER)
 		{
-			const float Factor = FMath::Clamp(Ratio, MinimumFactorThreshold, 1.f);
-			OutWeight += PureDefaultWeight * Weight * WeightNormalizer * Factor;
-		};
+			const float Ratio = TargetContext.DistanceSq / FMath::Square(DistanceMaxFactor);
+			ApplyFactor(DistanceWeight, Ratio);
+		}
 
-	if (DistanceWeight > UE_KINDA_SMALL_NUMBER)
-	{
-		const float Ratio = TargetContext.DistanceSq / FMath::Square(DistanceMaxFactor);
-		ApplyFactor(DistanceWeight, Ratio);
-	}
+		if (DeltaAngleWeight > UE_KINDA_SMALL_NUMBER)
+		{
+			const float Ratio = FMath::RadiansToDegrees(FMath::Acos(TargetContext.Direction | Context.SolverViewDirection)) / DeltaAngleMaxFactor;
+			ApplyFactor(DeltaAngleWeight, Ratio);
+		}
 
-	if (DeltaAngleWeight > UE_KINDA_SMALL_NUMBER)
-	{
-		const float Ratio = FMath::RadiansToDegrees(FMath::Acos(TargetContext.Direction | Context.SolverViewDirection)) / DeltaAngleMaxFactor;
-		ApplyFactor(DeltaAngleWeight, Ratio);
-	}
+		if (Context.Mode == EFindTargetContextMode::Switch && PlayerInputWeight > UE_KINDA_SMALL_NUMBER)
+		{
+			const float Ratio = TargetContext.DeltaAngle2D / PlayerInputAngularRange;
+			ApplyFactor(PlayerInputWeight, Ratio);
+		}
 
-	if (Context.Mode == EFindTargetContextMode::Switch && PlayerInputWeight > UE_KINDA_SMALL_NUMBER)
-	{
-		const float Ratio = TargetContext.DeltaAngle2D / PlayerInputAngularRange;
-		ApplyFactor(PlayerInputWeight, Ratio);
-	}
-
-	if (TargetPriorityWeight > UE_KINDA_SMALL_NUMBER)
-	{
-		ApplyFactor(TargetPriorityWeight, TargetContext.Target->Priority);
+		if (TargetPriorityWeight > UE_KINDA_SMALL_NUMBER)
+		{
+			ApplyFactor(TargetPriorityWeight, TargetContext.Target->Priority);
+		}
 	}
 
 	return OutWeight;
@@ -427,6 +437,12 @@ void UWeightedTargetHandler::CalcDeltaAngle2D(const FFindTargetContext& Context,
 	const float DeltaY = Context.ViewRotationMatrix.GetScaledAxis(EAxis::Z) | Delta;
 	OutTargetContext.DeltaDirection2D = FVector2D(DeltaX, -DeltaY).GetSafeNormal();
 	OutTargetContext.DeltaAngle2D = FMath::RadiansToDegrees(FMath::Acos(OutTargetContext.DeltaDirection2D | Context.PlayerInputDirection));
+}
+
+float UWeightedTargetHandler::GetTargetCaptureRadius(const UTargetComponent* InTarget) const
+{
+	check(InTarget);
+	return CaptureRadiusScale * (InTarget->bForceCustomCaptureRadius ? InTarget->CustomCaptureRadius : DefaultCaptureRadius);
 }
 
 bool UWeightedTargetHandler::IsTargetOnScreen(const FFindTargetContext& Context, const FTargetContext& TargetContext) const

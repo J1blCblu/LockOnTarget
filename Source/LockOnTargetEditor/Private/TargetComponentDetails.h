@@ -8,13 +8,14 @@
 #include "UObject/WeakObjectPtr.h"
 
 class UTargetComponent;
+class AActor;
+class USceneComponent;
+
 class IDetailLayoutBuilder;
 class IDetailChildrenBuilder;
 class IPropertyHandle;
 class SEditableTextBox;
 class SWidget;
-class SSocketSelector;
-class AActor;
 
 /** Ref: CameraDetails. */
 class FTargetComponentDetails final : public IDetailCustomization
@@ -27,7 +28,7 @@ public:
 
 private:
 
-	FName GetAssociatedComponentName() const;
+	FName GetAssociatedComponentNameValue() const;
 	AActor* GetComponentEditorOwner() const;
 	USceneComponent* GetAssociatedComponent() const;
 

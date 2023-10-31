@@ -8,7 +8,13 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
+
+#include "Runtime/Launch/Resources/Version.h"
+#if ENGINE_MINOR_VERSION <= 2 //&& ENGINE_MAJOR_VERSION == 5
 #include "SceneOutliner/Private/SSocketChooser.h"
+#else
+#include "SSocketChooser.h"
+#endif
 
 #include "Styling/AppStyle.h"
 #include "Styling/SlateColor.h"

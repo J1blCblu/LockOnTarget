@@ -11,7 +11,8 @@
 #include "GameFramework/PlayerController.h"
 
 UWidgetExtension::UWidgetExtension()
-	: DefaultWidgetClass(FSoftClassPath(FString(TEXT("/Script/UMGEditor.WidgetBlueprint'/LockOnTarget/WBP_Target.WBP_Target_C'"))))
+	: bIsLocalWidget(true)
+	, DefaultWidgetClass(FSoftClassPath(FString(TEXT("/Script/UMGEditor.WidgetBlueprint'/LockOnTarget/WBP_Target.WBP_Target_C'"))))
 	, Widget(nullptr)
 	, bWidgetIsActive(false)
 	, bWidgetIsInitialized(false)
@@ -23,7 +24,9 @@ void UWidgetExtension::Initialize(ULockOnTargetComponent* Instigator)
 {
 	Super::Initialize(Instigator);
 
-	if ((Widget = NewObject<UWidgetComponent>(this, MakeUniqueObjectName(this, UWidgetComponent::StaticClass(), TEXT("LockOnTarget_Target_Widget")), RF_Transient)))
+	Widget = NewObject<UWidgetComponent>(this, MakeUniqueObjectName(this, UWidgetComponent::StaticClass(), TEXT("LockOnTarget_Target_Widget")), RF_Transient);
+
+	if (Widget)
 	{
 		Widget->RegisterComponent();
 		Widget->SetWidgetSpace(EWidgetSpace::Screen);
@@ -55,18 +58,23 @@ void UWidgetExtension::OnTargetLocked(UTargetComponent* Target, FName Socket)
 {
 	Super::OnTargetLocked(Target, Socket);
 
-	if (IsWidgetInitialized() && Target->bWantsDisplayWidget && GetInstigatorController() && GetInstigatorController()->IsLocalController())
+	if (IsWidgetInitialized() && Target->bWantsDisplayWidget)
 	{
-		if (const auto* const PC = GetPlayerController())
-		{
-			Widget->SetOwnerPlayer(PC->GetLocalPlayer());
-		}
+		const APlayerController* const PC = GetPlayerController();
 
-		Widget->AttachToComponent(Target->GetAssociatedComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, Socket);
-		Widget->SetVisibility(true);
-		Widget->SetRelativeLocation(Target->WidgetRelativeOffset);
-		SetWidgetClass(Target->CustomWidgetClass.IsNull() ? DefaultWidgetClass : Target->CustomWidgetClass);
-		bWidgetIsActive = true;
+		if (!bIsLocalWidget || (PC && PC->IsLocalController()))
+		{
+			if (bIsLocalWidget)
+			{
+				Widget->SetOwnerPlayer(PC->GetLocalPlayer());
+			}
+
+			Widget->AttachToComponent(Target->GetAssociatedComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, Socket);
+			Widget->SetVisibility(true);
+			Widget->SetRelativeLocation(Target->WidgetRelativeOffset);
+			SetWidgetClass(Target->CustomWidgetClass.IsNull() ? DefaultWidgetClass : Target->CustomWidgetClass);
+			bWidgetIsActive = true;
+		}
 	}
 }
 
@@ -106,7 +114,7 @@ void UWidgetExtension::SetWidgetClass(const TSoftClassPtr<UUserWidget>& WidgetCl
 		{
 			Widget->SetWidgetClass(WidgetClass.Get());
 		}
-		else if(WidgetClass.IsPending())
+		else if (WidgetClass.IsPending())
 		{
 			StreamableHandle = UAssetManager::Get().GetStreamableManager().RequestAsyncLoad(WidgetClass.ToSoftObjectPath(), FStreamableDelegate::CreateUObject(this, &ThisClass::OnWidgetClassLoaded));
 		}
