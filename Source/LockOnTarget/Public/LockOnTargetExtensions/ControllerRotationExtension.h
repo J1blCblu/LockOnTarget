@@ -18,6 +18,12 @@ public:
 
 	UControllerRotationExtension();
 
+public: //Input
+
+	/** Whether to block the look input of the Controller while the Target is locked. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
+	bool bBlockLookInput;
+
 public: //Correction
 
 	/** Tries to approximately predict the Target location using velocity. Adds additional smoothness with fast Targets and helps to achieve 'lag-free' rotation. */

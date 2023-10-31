@@ -15,10 +15,10 @@
 
 ULockOnTargetComponent::ULockOnTargetComponent()
 	: bCanCaptureTarget(true)
-	, InputBufferThreshold(.15f)
+	, InputBufferThreshold(.08f)
 	, BufferResetFrequency(.2f)
-	, ClampInputVector(-2.f, 2.f)
-	, InputProcessingDelay(0.25f)
+	, ClampInputVector(-1.f, 1.f)
+	, InputProcessingDelay(0.2f)
 	, bUseInputFreezing(true)
 	, UnfreezeThreshold(1e-2f)
 	, CurrentTargetInternal(FTargetInfo::NULL_TARGET)
@@ -29,7 +29,7 @@ ULockOnTargetComponent::ULockOnTargetComponent()
 	, InputVector(0.f)
 {
 	PrimaryComponentTick.bCanEverTick = true;
-	PrimaryComponentTick.bStartWithTickEnabled = true;
+	PrimaryComponentTick.bStartWithTickEnabled = false;
 	PrimaryComponentTick.bAllowTickOnDedicatedServer = true; //TargetingDuration initial sync.
 	PrimaryComponentTick.TickInterval = 0.f;
 	PrimaryComponentTick.TickGroup = TG_PostPhysics;
@@ -39,6 +39,8 @@ ULockOnTargetComponent::ULockOnTargetComponent()
 void ULockOnTargetComponent::BeginPlay()
 {
 	Super::BeginPlay();
+
+	//@TODO: Subscribe on FWorldDelegates::OnWorldBeginTearDown to disable Targeting, instead of checking it manually.
 
 	InitializeSubobject(GetTargetHandler());
 
@@ -359,6 +361,7 @@ void ULockOnTargetComponent::NotifyTargetCaptured(const FTargetInfo& Target)
 	check(Target.TargetComponent);
 
 	bIsTargetLocked = true;
+	SetComponentTickEnabled(true);
 	Target->NotifyTargetCaptured(this);
 
 	if (HasBegunPlay())
@@ -380,6 +383,7 @@ void ULockOnTargetComponent::NotifyTargetReleased(const FTargetInfo& Target)
 	check(Target.TargetComponent);
 
 	bIsTargetLocked = false;
+	SetComponentTickEnabled(false);
 	Target->NotifyTargetReleased(this);
 
 	ForEachSubobject([&Target](ULockOnTargetExtensionProxy* Extension)
@@ -500,6 +504,11 @@ TArray<ULockOnTargetExtensionProxy*, TInlineAllocator<8>> ULockOnTargetComponent
 	return Subobjects;
 }
 
+void ULockOnTargetComponent::SetDefaultTargetHandler(UTargetHandlerBase* InDefaultTargetHandler)
+{
+	TargetHandlerImplementation = InDefaultTargetHandler;
+}
+
 UTargetHandlerBase* ULockOnTargetComponent::SetTargetHandlerByClass(TSubclassOf<UTargetHandlerBase> TargetHandlerClass)
 {
 	UTargetHandlerBase* const TargetHandler = NewObject<UTargetHandlerBase>(this, TargetHandlerClass);
@@ -531,6 +540,11 @@ ULockOnTargetExtensionBase* ULockOnTargetComponent::FindExtensionByClass(TSubcla
 		});
 
 	return Extension ? *Extension : nullptr;
+}
+
+void ULockOnTargetComponent::AddDefaultExtension(ULockOnTargetExtensionBase* InDefaultExtension)
+{
+	Extensions.Add(InDefaultExtension);
 }
 
 ULockOnTargetExtensionBase* ULockOnTargetComponent::AddExtensionByClass(TSubclassOf<ULockOnTargetExtensionBase> ExtensionClass)

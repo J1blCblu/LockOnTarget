@@ -88,7 +88,7 @@ enum class ETargetExceptionType : uint8
 
 //Finds a component within an Actor by name. If not found or Name == None, then nulltpr will be returned.
 template<typename T>
-typename TEnableIf<TPointerIsConvertibleFromTo<T, const class UActorComponent>::Value, T>::Type* FindComponentByName(AActor* Actor, FName Name)
+typename TEnableIf<TPointerIsConvertibleFromTo<T, const class UActorComponent>::Value, T>::Type* FindComponentByName(const AActor* Actor, FName Name)
 {
 	T* ReturnComponent = nullptr;
 

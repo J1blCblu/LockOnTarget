@@ -61,6 +61,8 @@ class LOCKONTARGET_API UTargetHandlerBase : public ULockOnTargetExtensionProxy
 
 public:
 
+	//@TODO: Perhaps someday create a SoftTargetHandler for dynamic Targeting, like Spider-Man from Insomniac Games, Batman: Arkham Knight and others.
+
 	UTargetHandlerBase();
 
 public: /** Target Handler Interface */
@@ -71,7 +73,7 @@ public: /** Target Handler Interface */
 	 * @param	RequestParams	A set of optional params for the request.
 	 * @return	Target to be captured or NULL_TARGET.
 	 */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "LockOnTarget|Target Handler Base")
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "LockOnTarget|Target Handler Base", meta = (AutoCreateRefTerm="RequestParams"))
 	FFindTargetRequestResponse FindTarget(const FFindTargetRequestParams& RequestParams = FFindTargetRequestParams());
 
 	/**

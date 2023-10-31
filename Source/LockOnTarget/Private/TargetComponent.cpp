@@ -5,13 +5,13 @@
 #include "LockOnTargetComponent.h"
 #include "LockOnTargetDefines.h"
 
-#include "Components/MeshComponent.h"
+#include "Components/SceneComponent.h"
 
 UTargetComponent::UTargetComponent()
 	: bCanBeCaptured(true)
 	, AssociatedComponentName(NAME_None)
-	, CaptureRadius(2200.f)
-	, LostOffsetRadius(150.f)
+	, bForceCustomCaptureRadius(false)
+	, CustomCaptureRadius(2700.f)
 	, Priority(0.5)
 	, FocusPointType(ETargetFocusPointType::CapturedSocket)
 	, FocusPointCustomSocket(NAME_None)
@@ -28,6 +28,7 @@ UTargetComponent::UTargetComponent()
 
 UTargetManager& UTargetComponent::GetTargetManager() const
 {
+	check(GetWorld());
 	return UTargetManager::Get(*GetWorld());
 }
 
@@ -35,18 +36,19 @@ void UTargetComponent::InitializeComponent()
 {
 	Super::InitializeComponent();
 
-	if (!AssociatedComponent.IsValid())
+	//If the associated component isn't set yet or changed from details.
+	if (!AssociatedComponent.IsValid() || AssociatedComponent->GetFName() != AssociatedComponentName)
 	{
-		if (AssociatedComponentName.IsNone())
+		if (const AActor* const Owner = GetOwner())
 		{
-			if (const AActor* const Owner = GetOwner())
+			if (AssociatedComponentName.IsNone())
 			{
 				AssociatedComponent = Owner->GetRootComponent();
 			}
-		}
-		else
-		{
-			AssociatedComponent = FindComponentByName<UMeshComponent>(GetOwner(), AssociatedComponentName);
+			else
+			{
+				AssociatedComponent = FindComponentByName<USceneComponent>(Owner, AssociatedComponentName);
+			}
 		}
 	}
 }
@@ -56,12 +58,15 @@ void UTargetComponent::SetAssociatedComponent(USceneComponent* InAssociatedCompo
 	if (IsValid(InAssociatedComponent) && InAssociatedComponent != AssociatedComponent.Get())
 	{
 		AssociatedComponent = InAssociatedComponent;
+		AssociatedComponentName = InAssociatedComponent->GetFName(); //For proper display in details.
 	}
 }
 
 void UTargetComponent::BeginPlay()
 {
 	Super::BeginPlay();
+
+	//@TODO: Move to Initialize() but test multiplayer setup and seamless travel.
 	GetTargetManager().RegisterTarget(this);
 }
 
@@ -133,35 +138,43 @@ void UTargetComponent::DispatchTargetException(ETargetExceptionType Exception)
 
 FVector UTargetComponent::GetSocketLocation(FName Socket) const
 {
-	const USceneComponent* const TrackedComponent = GetAssociatedComponent();
-	return TrackedComponent ? TrackedComponent->GetSocketLocation(Socket) : GetOwner()->GetActorLocation();
+	return AssociatedComponent.IsValid() ? AssociatedComponent->GetSocketLocation(Socket) : GetOwner()->GetActorLocation();
+}
+
+void UTargetComponent::SetDefaultSocket(FName Socket)
+{
+	if (Sockets.IsEmpty())
+	{
+		Sockets.Add(Socket);
+	}
+	else
+	{
+		Sockets[0] = Socket;
+	}
 }
 
 bool UTargetComponent::AddSocket(FName Socket)
 {
-	bool bAdded = false;
+	const bool bIsSuccessful = !Sockets.Contains(Socket);
 
-	const USceneComponent* const TrackedComponent = GetAssociatedComponent();
-
-	if (TrackedComponent && TrackedComponent->DoesSocketExist(Socket) && !Sockets.Contains(Socket))
+	if (bIsSuccessful)
 	{
 		Sockets.Add(Socket);
-		bAdded = true;
 	}
 
-	return bAdded;
+	return bIsSuccessful;
 }
 
 bool UTargetComponent::RemoveSocket(FName Socket)
 {
-	const bool bRemoved = Sockets.RemoveSingle(Socket) > 0;
+	const bool bIsSuccessful = Sockets.RemoveSingleSwap(Socket) > 0;
 
-	if (bRemoved)
+	if (bIsSuccessful)
 	{
 		DispatchTargetException(ETargetExceptionType::SocketInvalidation);
 	}
 
-	return bRemoved;
+	return bIsSuccessful;
 }
 
 FVector UTargetComponent::GetFocusPointLocation(const ULockOnTargetComponent* Instigator) const
@@ -174,15 +187,15 @@ FVector UTargetComponent::GetFocusPointLocation(const ULockOnTargetComponent* In
 	case ETargetFocusPointType::CapturedSocket:
 		FocusPointLocation = GetSocketLocation(Instigator->GetCapturedSocket());
 		break;
-	
+
 	case ETargetFocusPointType::CustomSocket:
 		FocusPointLocation = GetSocketLocation(FocusPointCustomSocket);
 		break;
-	
+
 	case ETargetFocusPointType::Custom:
 		FocusPointLocation = GetCustomFocusPoint(Instigator);
 		break;
-	
+
 	default:
 		checkNoEntry();
 		break;

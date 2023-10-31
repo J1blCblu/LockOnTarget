@@ -10,7 +10,7 @@ class UUserWidget;
 struct FStreamableHandle;
 
 /**
- * Visually indicates the captured Target by attaching a widget to the captured socket.
+ * Visually indicates the captured Target by attaching a widget to the socket.
  */
 UCLASS(Blueprintable, HideCategories = Tick)
 class LOCKONTARGET_API UWidgetExtension : public ULockOnTargetExtensionBase
@@ -22,6 +22,10 @@ public:
 	UWidgetExtension();
 
 public:
+
+	/** Whether to display the widget for a local player or for everyone. */
+	UPROPERTY(EditDefaultsOnly, Category = "Widget")
+	bool bIsLocalWidget;
 
 	/** Widget soft class, loaded on demand. */
 	UPROPERTY(EditDefaultsOnly, Category = "Widget")
