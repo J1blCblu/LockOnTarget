@@ -24,6 +24,9 @@ class FGameplayDebuggerCategory_LockOnTarget : public FGameplayDebuggerCategory
 {
 public:
 
+	//@TODO: Maybe we can use a debug actor rather than just an owning pawn. Might be useful for debugging non-player controlled pawns.
+	//@TODO: Maybe draw a corrected Target focus location from ControllerRotationExtension.
+
 	FGameplayDebuggerCategory_LockOnTarget();
 
 	static TSharedRef<FGameplayDebuggerCategory> MakeInstance()

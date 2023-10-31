@@ -17,7 +17,8 @@ static FVector VInterpCriticallyDamped(const FVector& Current, const FVector& Ta
 }
 
 UControllerRotationExtension::UControllerRotationExtension()
-	: bUseLocationPrediction(true)
+	: bBlockLookInput(true)
+	, bUseLocationPrediction(true)
 	, PredictionTime(0.083f)
 	, MaxAngularDeviation(10.f)
 	, bUseOscillationSmoothing(true)
@@ -65,6 +66,14 @@ void UControllerRotationExtension::OnTargetLocked(UTargetComponent* Target, FNam
 {
 	Super::OnTargetLocked(Target, Socket);
 	SetTickEnabled(true);
+
+	if (bBlockLookInput)
+	{
+		if (AController* const Controller = GetInstigatorController())
+		{
+			Controller->SetIgnoreLookInput(true);
+		}
+	}
 }
 
 void UControllerRotationExtension::OnTargetUnlocked(UTargetComponent* UnlockedTarget, FName Socket)
@@ -72,6 +81,14 @@ void UControllerRotationExtension::OnTargetUnlocked(UTargetComponent* UnlockedTa
 	Super::OnTargetUnlocked(UnlockedTarget, Socket);
 	SetTickEnabled(false);
 	ResetSpringInterpData();
+
+	if (bBlockLookInput)
+	{
+		if (AController* const Controller = GetInstigatorController())
+		{
+			Controller->SetIgnoreLookInput(false);
+		}
+	}
 }
 
 void UControllerRotationExtension::OnSocketChanged(UTargetComponent* CurrentTarget, FName NewSocket, FName OldSocket)
@@ -114,7 +131,7 @@ FRotator UControllerRotationExtension::CalcRotation_Implementation(const AContro
 		//Correction
 		{
 			TargetLocation = GetCorrectedTargetLocation(InitialTargetLocation, Distance2D, DeltaTime);
-
+			
 			//Don't overshoot the owner's pivot.
 			const float MaxOffsetLength = FMath::Max(Distance2D - CollisionRadius, 0.f);
 			const FVector FinalOffset = TargetLocation - InitialTargetLocation;

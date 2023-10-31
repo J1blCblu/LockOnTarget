@@ -51,7 +51,7 @@ void FTargetComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayou
 		DefaultCategoryBuilder.AddProperty(DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UTargetComponent, bCanBeCaptured)));
 	}
 
-	//TrackedMeshName
+	//AssociatedComponentName
 	{
 		AssociatedComponentNamePropertyHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UTargetComponent, AssociatedComponentName));
 
@@ -102,7 +102,7 @@ void FTargetComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayou
 
 	IDetailCategoryBuilder& FocusPointDetailBuilder = DetailLayout.EditCategory(TEXT("Focus Point"), FText::GetEmpty(), ECategoryPriority::Important);
 
-	//Focus Point
+	//FocusPointType
 	{
 		FocusPointDetailBuilder.AddProperty(DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UTargetComponent, FocusPointType)));
 	}
@@ -127,13 +127,13 @@ void FTargetComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayou
 		}
 	}
 
-	//Focus Point
+	//FocusPointRelativeOffset
 	{
 		FocusPointDetailBuilder.AddProperty(DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UTargetComponent, FocusPointRelativeOffset)));
 	}
 }
 
-FName FTargetComponentDetails::GetAssociatedComponentName() const
+FName FTargetComponentDetails::GetAssociatedComponentNameValue() const
 {
 	FName MeshName = NAME_None;
 
@@ -151,7 +151,12 @@ AActor* FTargetComponentDetails::GetComponentEditorOwner() const
 
 	if (EditedComponent.IsValid())
 	{
-		if (EditedComponent->HasAnyFlags(RF_ArchetypeObject))
+		//We're in a level or created using a C++ constructor.
+		if (AActor* const OwnerActor = EditedComponent->GetOwner())
+		{
+			Owner = OwnerActor;
+		}
+		else if (EditedComponent->HasAnyFlags(RF_ArchetypeObject)) //We're in the BP editor.
 		{
 			if (const UBlueprintGeneratedClass* const BPGC = Cast<UBlueprintGeneratedClass>(EditedComponent->GetOuter()))
 			{
@@ -160,11 +165,6 @@ AActor* FTargetComponentDetails::GetComponentEditorOwner() const
 					Owner = SCS->GetComponentEditorActorInstance();
 				}
 			}
-		}
-		else
-		{
-			//Owner, placed in the world, has all components, including those added in BP editor.
-			Owner = EditedComponent->GetOwner();
 		}
 	}
 
@@ -175,13 +175,22 @@ USceneComponent* FTargetComponentDetails::GetAssociatedComponent() const
 {
 	USceneComponent* Component = nullptr;
 	
-	if (AActor* const Owner = GetComponentEditorOwner())
+	if (EditedComponent.IsValid())
 	{
-		Component = FindComponentByName<UMeshComponent>(GetComponentEditorOwner(), GetAssociatedComponentName());
-
-		if (!Component)
+		if (AActor* const Owner = GetComponentEditorOwner())
 		{
-			Component = Owner->GetRootComponent();
+			Component = FindComponentByName<USceneComponent>(Owner, GetAssociatedComponentNameValue());
+
+			//If name is none then use the root component.
+			if (!Component)
+			{
+				Component = Owner->GetRootComponent();
+			}
+		}
+		else
+		{
+			//Try to use the cached component if it exists.
+			Component = EditedComponent->GetAssociatedComponent();
 		}
 	}
 
@@ -190,7 +199,7 @@ USceneComponent* FTargetComponentDetails::GetAssociatedComponent() const
 
 void FTargetComponentDetails::UpdateAssociatedComponentNameText()
 {
-	OnCommitAssociatedComponentNameEntry(GetAssociatedComponentName());
+	OnCommitAssociatedComponentNameEntry(GetAssociatedComponentNameValue());
 }
 
 void FTargetComponentDetails::OnCommitAssociatedComponentNameEntry(FName MeshName)
@@ -218,12 +227,12 @@ TSharedRef<SWidget> FTargetComponentDetails::OnGetMeshContent()
 		MenuBuilder.AddMenuEntry(FText::FromString(TEXT("None (Root)")), FText::GetEmpty(), FSlateIconFinder::FindIconForClass(ACharacter::StaticClass()), Action);
 	}
 
-	MenuBuilder.BeginSection(NAME_None, FText::FromString(TEXT("Meshes")));
+	MenuBuilder.BeginSection(NAME_None, FText::FromString(TEXT("Components")));
 
 	//All other meshes
 	if(AActor* const ComponentOwner = GetComponentEditorOwner())
 	{
-		for (auto* const Component : TInlineComponentArray<UMeshComponent*>(ComponentOwner))
+		for (auto* const Component : TInlineComponentArray<USceneComponent*>(ComponentOwner))
 		{
 			if (Component && !Component->IsEditorOnly())
 			{

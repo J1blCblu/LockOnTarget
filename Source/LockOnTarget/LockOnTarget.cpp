@@ -10,9 +10,7 @@ IMPLEMENT_MODULE(FLockOnTargetModule, LockOnTarget);
 
 DEFINE_LOG_CATEGORY(LogLockOnTarget);
 
-#if LOT_TRACE_ENABLED
 UE_TRACE_CHANNEL_DEFINE(LockOnTargetChannel);
-#endif
 
 void FLockOnTargetModule::StartupModule()
 {

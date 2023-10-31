@@ -22,7 +22,7 @@ public:
 public:
 
 	/** Change in rotation per second. Set a negative value for infinite rotation rate and instant turns. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rotation", meta = (ClampMin = 0.f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rotation")
 	float RotationRate;
 	
 public:

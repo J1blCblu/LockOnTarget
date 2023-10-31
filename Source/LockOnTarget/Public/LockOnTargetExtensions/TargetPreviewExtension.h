@@ -46,9 +46,6 @@ private: /** Internal */
 	//Whether the widget was successfully initialized or not.
 	bool bWidgetIsInitialized;
 
-	//UpdateRate accumulator.
-	float UpdateTimer;
-
 public:
 
 	bool IsWidgetInitialized() const;

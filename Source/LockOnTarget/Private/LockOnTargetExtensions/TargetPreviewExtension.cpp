@@ -16,11 +16,10 @@ UTargetPreviewExtension::UTargetPreviewExtension()
 	, UpdateRate(0.1f)
 	, Widget(nullptr)
 	, bWidgetIsInitialized(false)
-	, UpdateTimer(0.f)
 {
 	ExtensionTick.TickGroup = TG_PostPhysics;
 	ExtensionTick.bCanEverTick = true;
-	ExtensionTick.bStartWithTickEnabled = true;
+	ExtensionTick.bStartWithTickEnabled = false; //Update only if we've successfully created the widget.
 	ExtensionTick.bAllowTickOnDedicatedServer = false;
 }
 
@@ -51,6 +50,9 @@ void UTargetPreviewExtension::Initialize(ULockOnTargetComponent* Instigator)
 		}
 
 		bWidgetIsInitialized = true;
+
+		ExtensionTick.TickInterval = UpdateRate;
+		SetTickEnabled(true);
 	}
 }
 
@@ -91,12 +93,14 @@ void UTargetPreviewExtension::OnTargetLocked(UTargetComponent* Target, FName Soc
 {
 	Super::OnTargetLocked(Target, Socket);
 	SetPreviewActive(false);
+	SetTickEnabled(false);
 }
 
 void UTargetPreviewExtension::OnTargetUnlocked(UTargetComponent* UnlockedTarget, FName Socket)
 {
 	Super::OnTargetUnlocked(UnlockedTarget, Socket);
 	SetPreviewActive(true);
+	SetTickEnabled(true);
 }
 
 void UTargetPreviewExtension::SetPreviewActive(bool bInActive)
@@ -110,7 +114,6 @@ void UTargetPreviewExtension::SetPreviewActive(bool bInActive)
 			if (!IsPreviewActive())
 			{
 				StopTargetPreview(PreviewTarget);
-				UpdateTimer = 0.f;
 			}
 		}
 	}
@@ -122,15 +125,11 @@ void UTargetPreviewExtension::Update(float DeltaTime)
 
 	const AController* const Controller = GetInstigatorController();
 
-	if (IsWidgetInitialized() && Controller && Controller->IsLocalController() && GetLockOnTargetComponent()->CanCaptureTarget())
+	if (IsWidgetInitialized() 
+		&& Controller && Controller->IsLocalController() 
+		&& GetLockOnTargetComponent()->CanCaptureTarget())
 	{
-		UpdateTimer += DeltaTime;
-
-		if (UpdateTimer > UpdateRate)
-		{
-			UpdateTimer -= UpdateRate;
-			UpdateTargetPreview();
-		}
+		UpdateTargetPreview();
 	}
 }
 
