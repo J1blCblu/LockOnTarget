@@ -33,7 +33,7 @@ void FTargetComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayou
 	TArray<TWeakObjectPtr<UObject>> Objects;
 	DetailLayout.GetObjectsBeingCustomized(Objects);
 
-	if(!Objects.Num())
+	if (!Objects.Num())
 	{
 		return;
 	}
@@ -151,20 +151,32 @@ AActor* FTargetComponentDetails::GetComponentEditorOwner() const
 
 	if (EditedComponent.IsValid())
 	{
-		//We're in a level or created using a C++ constructor.
-		if (AActor* const OwnerActor = EditedComponent->GetOwner())
+		if (EditedComponent->HasAnyFlags(RF_ArchetypeObject)) //In BP editor.
 		{
-			Owner = OwnerActor;
-		}
-		else if (EditedComponent->HasAnyFlags(RF_ArchetypeObject)) //We're in the BP editor.
-		{
-			if (const UBlueprintGeneratedClass* const BPGC = Cast<UBlueprintGeneratedClass>(EditedComponent->GetOuter()))
+			const UBlueprintGeneratedClass* BPGC;
+
+			if (EditedComponent->HasAnyFlags(RF_DefaultSubObject))
+			{
+				//DefaultSubobject created during construction.
+				BPGC = Cast<UBlueprintGeneratedClass>(EditedComponent->GetOuter()->GetClass());
+			}
+			else
+			{
+				//BP created component.
+				BPGC = Cast<UBlueprintGeneratedClass>(EditedComponent->GetOuter());
+			}
+
+			if (BPGC)
 			{
 				if (const USimpleConstructionScript* const SCS = BPGC->SimpleConstructionScript)
 				{
 					Owner = SCS->GetComponentEditorActorInstance();
 				}
 			}
+		}
+		else if (AActor* const OwnerActor = EditedComponent->GetOwner()) //On the map.
+		{
+			Owner = OwnerActor;
 		}
 	}
 
@@ -174,7 +186,7 @@ AActor* FTargetComponentDetails::GetComponentEditorOwner() const
 USceneComponent* FTargetComponentDetails::GetAssociatedComponent() const
 {
 	USceneComponent* Component = nullptr;
-	
+
 	if (EditedComponent.IsValid())
 	{
 		if (AActor* const Owner = GetComponentEditorOwner())
@@ -230,7 +242,7 @@ TSharedRef<SWidget> FTargetComponentDetails::OnGetMeshContent()
 	MenuBuilder.BeginSection(NAME_None, FText::FromString(TEXT("Components")));
 
 	//All other meshes
-	if(AActor* const ComponentOwner = GetComponentEditorOwner())
+	if (AActor* const ComponentOwner = GetComponentEditorOwner())
 	{
 		for (auto* const Component : TInlineComponentArray<USceneComponent*>(ComponentOwner))
 		{
