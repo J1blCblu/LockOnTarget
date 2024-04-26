@@ -1,26 +1,22 @@
 # LockOnTarget
 
-Fast and efficient plugin for Unreal Engine which gives the ability to find and capture the Target, synchronizing it with the server. The system consist of 2 components which can be extended and customized.
+Fast and efficient plugin for Unreal Engine which gives the ability to lock onto a Target similar to Souls-like games. The system is divided into 2 components.
 
-* [**LockOnTargetComponent**](https://github.com/J1blCblu/LockOnTarget/wiki/2.-LockOnTargetComponent-Overview) - gives the locally controlled AActor the ability to find and store the Target along with the Socket. The Target can be controlled directly by the component or through an optional [TargetHandler](https://github.com/J1blCblu/LockOnTarget/wiki/2.2-Third-Person-Target-Handler). The component may contain a set of optional **Modules**, which can be used to add custom cosmetic features.
+* [**LockOnTargetComponent**](https://github.com/J1blCblu/LockOnTarget/wiki/2.-LockOnTargetComponent-Overview) - gives a locally controlled AActor the ability to capture a Target along with a Socket. The Target is controlled through an optional [TargetHandler](https://github.com/J1blCblu/LockOnTarget/wiki/2.2-Weighted-Target-Handler). The component may contain a set of optional **Extensions** that can be used to add custom cosmetic features such as Target indication.
 
 * [**TargetComponent**](https://github.com/J1blCblu/LockOnTarget/wiki/3.-TargetComponent-Overview) - Represents a Target that *LockOnTargetComponent* can capture in conjunction with a Socket. It is kind of a dumping ground for anything LockOnTarget subsystems may need.
 
 
 # Features
 
-* Capture *any Actor* with a TargetComponent, which can be removed/added at runtime.
-* Target can have multiple Sockets, which can be added/removed at runtime.
+* Capture *any Actor* with a TargetComponent with multiple sockets.
 * Network synchronization.
-* Custom Widget for each Target.
 * Flexible input processing settings.
-* Several useful methods and delegates.
-* Target sorting to find the best one.
-* Line of Sight check.
-* Distance check.
-* Auto find a new Target.
-* Target switching.
+* Target filtering.
+* Auto Target finding in response to events.
+* Target switching in screen space.
 * [Debugger](https://github.com/J1blCblu/LockOnTarget/wiki/4.-Gameplay-Debugger-Overview).
+* Per Target widget customization.
 
 
 # Installation
