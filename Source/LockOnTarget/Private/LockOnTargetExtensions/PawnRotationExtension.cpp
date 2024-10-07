@@ -10,7 +10,7 @@
 UPawnRotationExtension::UPawnRotationExtension()
 	: RotationRate(720.f)
 {
-	ExtensionTick.TickGroup = TG_DuringPhysics;
+	ExtensionTick.TickGroup = TG_PrePhysics;
 	ExtensionTick.bCanEverTick = true;
 	ExtensionTick.bStartWithTickEnabled = false;
 	ExtensionTick.bAllowTickOnDedicatedServer = true;
