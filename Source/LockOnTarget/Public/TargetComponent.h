@@ -32,7 +32,7 @@ enum class ETargetFocusPointType : uint8
  * 
  * There is a small and simple TargetManager keeps track of registered Targets in game.
  * 
- * @Note: Not replicated. Take this into account when changing its state.
+ * @Note: Not replicated. Take this into account when changing the internal state.
  * 
  * @see ULockOnTargetComponent.
  */

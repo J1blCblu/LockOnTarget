@@ -17,6 +17,7 @@ UTargetPreviewExtension::UTargetPreviewExtension()
 	, Widget(nullptr)
 	, bWidgetIsInitialized(false)
 {
+	WidgetClass.ToSoftObjectPath().PostLoadPath(nullptr);
 	ExtensionTick.TickGroup = TG_PostPhysics;
 	ExtensionTick.bCanEverTick = true;
 	ExtensionTick.bStartWithTickEnabled = false; //Update only if we've successfully created the widget.
@@ -27,32 +28,36 @@ void UTargetPreviewExtension::Initialize(ULockOnTargetComponent* Instigator)
 {
 	Super::Initialize(Instigator);
 
-	Widget = NewObject<UWidgetComponent>(this, MakeUniqueObjectName(this, UWidgetComponent::StaticClass(), TEXT("LockOnTarget_TargetPreview_Widget")), RF_Transient);
-
-	if (Widget)
+	//Don't create WidgetComponent on a dedicated server.
+	if (!IsRunningDedicatedServer())
 	{
-		Widget->RegisterComponent();
-		Widget->SetWidgetSpace(EWidgetSpace::Screen);
-		Widget->SetVisibility(false);
-		Widget->SetDrawAtDesiredSize(true);
-		Widget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Widget = NewObject<UWidgetComponent>(this, MakeUniqueObjectName(this, UWidgetComponent::StaticClass(), TEXT("LockOnTarget_TargetPreview_Widget")), RF_Transient);
 
-		if (WidgetClass)
+		if (Widget)
 		{
-			Widget->SetWidgetClass(WidgetClass.Get());
-		}
-		else
-		{
-			if (WidgetClass.IsPending())
+			Widget->RegisterComponent();
+			Widget->SetWidgetSpace(EWidgetSpace::Screen);
+			Widget->SetVisibility(false);
+			Widget->SetDrawAtDesiredSize(true);
+			Widget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+			if (WidgetClass)
 			{
-				StreamableHandle = UAssetManager::Get().GetStreamableManager().RequestAsyncLoad(WidgetClass.ToSoftObjectPath(), FStreamableDelegate::CreateUObject(this, &ThisClass::OnWidgetClassLoaded));
+				Widget->SetWidgetClass(WidgetClass.Get());
 			}
+			else
+			{
+				if (WidgetClass.IsPending())
+				{
+					StreamableHandle = UAssetManager::Get().GetStreamableManager().RequestAsyncLoad(WidgetClass.ToSoftObjectPath(), FStreamableDelegate::CreateUObject(this, &ThisClass::OnWidgetClassLoaded));
+				}
+			}
+
+			bWidgetIsInitialized = true;
+
+			ExtensionTick.TickInterval = UpdateRate;
+			SetTickEnabled(true);
 		}
-
-		bWidgetIsInitialized = true;
-
-		ExtensionTick.TickInterval = UpdateRate;
-		SetTickEnabled(true);
 	}
 }
 
@@ -61,7 +66,7 @@ void UTargetPreviewExtension::OnWidgetClassLoaded()
 	if (IsWidgetInitialized() && StreamableHandle.IsValid() && StreamableHandle->HasLoadCompleted())
 	{
 		//@TODO: Ensure that we've got the right class.
-		Widget->SetWidgetClass(StaticCast<UClass*>(StreamableHandle->GetLoadedAsset()));
+		Widget->SetWidgetClass(static_cast<UClass*>(StreamableHandle->GetLoadedAsset()));
 	}
 }
 

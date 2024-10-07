@@ -55,9 +55,11 @@ void ULockOnTargetComponent::BeginPlay()
 		}
 		else
 		{
-			Extensions.RemoveAtSwap(i);
+			Extensions.RemoveAtSwap(i, 1, false);
 		}
 	}
+
+	Extensions.Shrink();
 }
 
 void ULockOnTargetComponent::EndPlay(EEndPlayReason::Type EndPlayReason)
@@ -571,7 +573,7 @@ bool ULockOnTargetComponent::RemoveExtensionByClass(TSubclassOf<ULockOnTargetExt
 			if (ensure(IsValid(Extension)) && Extension->IsA(ExtensionClass))
 			{
 				DestroySubobject(Extension);
-				Extensions.RemoveAtSwap(i);
+				Extensions.RemoveAtSwap(i, 1, false);
 
 				return true;
 			}

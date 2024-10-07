@@ -17,6 +17,7 @@ UWidgetExtension::UWidgetExtension()
 	, bWidgetIsActive(false)
 	, bWidgetIsInitialized(false)
 {
+	DefaultWidgetClass.ToSoftObjectPath().PostLoadPath(nullptr);
 	ExtensionTick.bCanEverTick = false;
 }
 
@@ -24,16 +25,20 @@ void UWidgetExtension::Initialize(ULockOnTargetComponent* Instigator)
 {
 	Super::Initialize(Instigator);
 
-	Widget = NewObject<UWidgetComponent>(this, MakeUniqueObjectName(this, UWidgetComponent::StaticClass(), TEXT("LockOnTarget_Target_Widget")), RF_Transient);
-
-	if (Widget)
+	//Don't create WidgetComponent on a dedicated server.
+	if (!IsRunningDedicatedServer())
 	{
-		Widget->RegisterComponent();
-		Widget->SetWidgetSpace(EWidgetSpace::Screen);
-		Widget->SetVisibility(false);
-		Widget->SetDrawAtDesiredSize(true);
-		Widget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		bWidgetIsInitialized = true;
+		Widget = NewObject<UWidgetComponent>(this, MakeUniqueObjectName(this, UWidgetComponent::StaticClass(), TEXT("LockOnTarget_Target_Widget")), RF_Transient);
+
+		if (Widget)
+		{
+			Widget->RegisterComponent();
+			Widget->SetWidgetSpace(EWidgetSpace::Screen);
+			Widget->SetVisibility(false);
+			Widget->SetDrawAtDesiredSize(true);
+			Widget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			bWidgetIsInitialized = true;
+		}
 	}
 }
 
@@ -126,7 +131,7 @@ void UWidgetExtension::OnWidgetClassLoaded()
 	if (IsWidgetInitialized() && StreamableHandle.IsValid() && StreamableHandle->HasLoadCompleted())
 	{
 		//@TODO: Ensure that we've got the right class.
-		Widget->SetWidgetClass(StaticCast<UClass*>(StreamableHandle->GetLoadedAsset()));
+		Widget->SetWidgetClass(static_cast<UClass*>(StreamableHandle->GetLoadedAsset()));
 	}
 }
 

@@ -81,6 +81,7 @@ void UWeightedTargetHandler::CheckTargetState_Implementation(const FTargetInfo& 
 		{
 			LineOfSightCheckTimer = 0.f;
 
+			//@TODO: Maybe use AsyncLineTrace.
 			if (LineOfSightTrace(ViewLocation, Target->GetSocketLocation(Target.Socket), TargetActor))
 			{
 				StopLineOfSightTimer();
