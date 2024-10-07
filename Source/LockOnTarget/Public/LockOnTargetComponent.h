@@ -331,7 +331,7 @@ public: /** Extensions */
 	bool RemoveExtensionByClass(TSubclassOf<ULockOnTargetExtensionBase> ExtensionClass);
 
 	template<typename Class>
-	void RemoveExtensionByClass()
+	bool RemoveExtensionByClass()
 	{
 		static_assert(TPointerIsConvertibleFromTo<Class, const ULockOnTargetExtensionBase>::Value, "Invalid template param.");
 		return RemoveExtensionByClass(Class::StaticClass());

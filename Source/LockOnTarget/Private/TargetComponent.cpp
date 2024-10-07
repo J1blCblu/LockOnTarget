@@ -57,6 +57,7 @@ void UTargetComponent::SetAssociatedComponent(USceneComponent* InAssociatedCompo
 {
 	if (IsValid(InAssociatedComponent) && InAssociatedComponent != AssociatedComponent.Get())
 	{
+		check(!InAssociatedComponent->IsEditorOnly());
 		AssociatedComponent = InAssociatedComponent;
 		AssociatedComponentName = InAssociatedComponent->GetFName(); //For proper display in details.
 	}
@@ -114,7 +115,7 @@ void UTargetComponent::NotifyTargetCaptured(ULockOnTargetComponent* Instigator)
 void UTargetComponent::NotifyTargetReleased(ULockOnTargetComponent* Instigator)
 {
 	check(IsValid(Instigator));
-	Invaders.RemoveSingle(Instigator);
+	Invaders.RemoveSingleSwap(Instigator, false);
 	K2_OnReleased(Instigator);
 	OnTargetComponentReleased.Broadcast(Instigator);
 }
@@ -147,9 +148,11 @@ void UTargetComponent::SetDefaultSocket(FName Socket)
 	{
 		Sockets.Add(Socket);
 	}
-	else
+	else if (Sockets[0] != Socket)
 	{
 		Sockets[0] = Socket;
+
+		DispatchTargetException(ETargetExceptionType::SocketInvalidation);
 	}
 }
 
@@ -167,7 +170,7 @@ bool UTargetComponent::AddSocket(FName Socket)
 
 bool UTargetComponent::RemoveSocket(FName Socket)
 {
-	const bool bIsSuccessful = Sockets.RemoveSingleSwap(Socket) > 0;
+	const bool bIsSuccessful = Sockets.RemoveSingleSwap(Socket, false) > 0;
 
 	if (bIsSuccessful)
 	{

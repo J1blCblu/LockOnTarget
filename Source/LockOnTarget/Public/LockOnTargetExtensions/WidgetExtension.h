@@ -58,7 +58,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "LockOnTarget|Widget Module")
 	void SetWidgetVisibility(bool bInVisibility);
 
-	//Gets the displayed widget component.
+	//Returns the displayed widget component.
 	UFUNCTION(BlueprintPure, Category = "LockOnTarget|Widget Module")
 	UWidgetComponent* GetWidget() const;
 

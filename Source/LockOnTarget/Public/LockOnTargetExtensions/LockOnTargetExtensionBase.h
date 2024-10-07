@@ -61,7 +61,7 @@ public:
 
 	/** Main tick function for the Extension. */
 	UPROPERTY(EditDefaultsOnly, Category="Tick")
-	struct FLockOnTargetExtensionTickFunction ExtensionTick;
+	FLockOnTargetExtensionTickFunction ExtensionTick;
 
 private: /** Internal */
 
